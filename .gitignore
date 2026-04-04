@@ -22,3 +22,23 @@ logs
 .env
 .env.*
 !.env.example
+
+# Playwright MCP local files
+.playwright-mcp
+.mcp-local
+mcp.json
+sessions/
+
+# Playwright AI Agents/Code Gen
+.vscode/mcp.json
+.mcp-playwright*
+
+# Generated YAML/Reports
+*-report.yml
+results/
+traces/
+
+# General Playwright/Node
+test-results/
+playwright-report/
+.env

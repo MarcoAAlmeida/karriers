@@ -1,5 +1,7 @@
 import type { ScenarioMetadata } from '../../types'
 
+export { MIDWAY } from './midway'
+
 export const SCENARIO_MANIFEST: ScenarioMetadata[] = [
   {
     id: 'midway',

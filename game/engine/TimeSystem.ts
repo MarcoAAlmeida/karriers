@@ -11,7 +11,7 @@ export const STEP_MINUTES = 30
  * A full 30-min step fires every 30 real seconds at 1×.
  * At 4×: fires every 7.5 real seconds. At 8×: every 3.75 seconds.
  */
-export const MS_PER_SIM_MINUTE_AT_1X = 1000
+export const MS_PER_SIM_MINUTE_AT_1X = 100
 
 export type TimeScale = 1 | 2 | 4 | 8
 
@@ -60,6 +60,8 @@ export class TimeSystem {
     const stepMs = STEP_MINUTES * MS_PER_SIM_MINUTE_AT_1X
     return Math.min(this._accumMs / stepMs, 1)
   }
+
+  get endTime(): GameTime { return { ...this._endTime } }
 
   get isExpired(): boolean {
     return gameTimeToMinutes(this._currentTime) >= gameTimeToMinutes(this._endTime)

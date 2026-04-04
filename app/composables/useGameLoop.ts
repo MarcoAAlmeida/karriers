@@ -8,6 +8,7 @@
 export function useGameLoop() {
   const gameStore = useGameStore()
   const forcesStore = useForcesStore()
+  const intelStore = useIntelligenceStore()
 
   let rafHandle = 0
   let lastTimestamp: number | null = null
@@ -25,7 +26,7 @@ export function useGameLoop() {
 
       if (result.stepFired && result.snapshot) {
         forcesStore.syncFromSnapshot(result.snapshot)
-        // intelligence store will also sync here in Sprint 3
+        intelStore.syncFromSnapshot(result.snapshot)
       }
 
       // Mirror pause state (engine may self-pause at scenario end)

@@ -45,6 +45,7 @@ export interface VictoryCondition {
 
 export interface ScenarioForce {
   side: Side
+  ships: Ship[]
   taskGroups: TaskGroup[]
   squadrons: Squadron[]
 }
