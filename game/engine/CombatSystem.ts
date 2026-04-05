@@ -62,7 +62,7 @@ export class CombatSystem {
       // Strike has arrived
       plan.status = 'inbound'
 
-      const result = this.resolveStrike(plan, taskGroups, ships, squadrons, currentTime)
+      const result = this.resolveStrike(plan, taskGroups, ships, squadrons, currentTime, flightPlans)
       if (result) {
         results.push(result)
         // Update squadron losses
@@ -83,7 +83,8 @@ export class CombatSystem {
     taskGroups: Map<string, TaskGroup>,
     ships: Map<string, Ship>,
     squadrons: Map<string, Squadron>,
-    currentTime: GameTime
+    currentTime: GameTime,
+    flightPlans: Map<string, FlightPlan>
   ): StrikeResult | null {
     if (!plan.targetHex) return null
 
@@ -104,7 +105,7 @@ export class CombatSystem {
     let totalAircraftLost = 0
 
     // 1. CAP intercept
-    const capSquadrons = this.airOpsSystem.getCAPSquadrons(targetTG.id, squadrons, new Map())
+    const capSquadrons = this.airOpsSystem.getCAPSquadrons(targetTG.id, squadrons, flightPlans)
     let airCombat: AirCombatResult | undefined
     let survivingAttackers = attackerSquadrons.flatMap(sq => {
       const aircraft = this.aircraftTypes.get(sq.aircraftTypeId)

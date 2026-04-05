@@ -86,7 +86,7 @@ export interface EngineEvents {
   ShipDamaged: CombatEvent
   ShipSunk: { shipId: string; taskGroupId: string; side: Side; time: GameTime }
   StrikeInbound: { flightPlanId: string; targetTaskGroupId: string; time: GameTime }
-  ScenarioEnded: { winner: Side | 'draw'; time: GameTime }
+  ScenarioEnded: { winner: Side | 'draw'; time: GameTime; alliedPoints: number; japanesePoints: number }
 }
 
 // ── Order payloads ─────────────────────────────────────────────────────────
@@ -317,12 +317,14 @@ export class GameEngine {
       this.state.pendingCombatEvents.push({ type: 'strike-resolved', result: strike })
       // Individual ship-damaged events
       for (const hit of strike.hits) {
-        this.state.pendingCombatEvents.push({
+        const dmgEvent: CombatEvent = {
           type: 'ship-damaged',
           shipId: hit.shipId,
           damageType: hit.damageType,
           at: currentTime
-        })
+        }
+        this.state.pendingCombatEvents.push(dmgEvent)
+        this.events.emit('ShipDamaged', dmgEvent)
       }
     }
 
@@ -360,7 +362,12 @@ export class GameEngine {
       if (victoryState.winner !== null) {
         this.scenarioEnded = true
         this.timeSystem.pause()
-        this.events.emit('ScenarioEnded', { winner: victoryState.winner, time: currentTime })
+        this.events.emit('ScenarioEnded', {
+          winner: victoryState.winner,
+          time: currentTime,
+          alliedPoints: victoryState.alliedPoints,
+          japanesePoints: victoryState.japanesePoints
+        })
       }
     }
   }

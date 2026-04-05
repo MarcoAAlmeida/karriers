@@ -33,13 +33,21 @@
         class="pointer-events-auto absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       >
         <div class="text-center space-y-4 p-8 rounded-2xl bg-gray-900/90 border border-gray-700 max-w-sm mx-4">
-          <h2 class="text-3xl font-bold text-amber-400 tracking-widest uppercase">
-            Scenario Ended
+          <h2 class="text-3xl font-bold tracking-widest uppercase" :class="winnerColor">
+            {{ winnerLabel }}
           </h2>
-          <p class="text-gray-300 text-sm leading-relaxed">
-            The battle is over. Review the map, then return to the main menu.
-          </p>
-          <UButton label="Back to Menu" color="primary" size="lg" @click="gameStore.returnToMenu()" />
+          <p class="text-gray-400 text-sm">{{ resultLine }}</p>
+          <div class="flex justify-center gap-8 text-sm">
+            <div class="text-center">
+              <div class="text-xs uppercase tracking-widest text-gray-500 mb-1">Allied</div>
+              <div class="text-2xl font-bold text-blue-400">{{ gameStore.alliedPoints }}</div>
+            </div>
+            <div class="text-center">
+              <div class="text-xs uppercase tracking-widest text-gray-500 mb-1">Japanese</div>
+              <div class="text-2xl font-bold text-red-400">{{ gameStore.japanesePoints }}</div>
+            </div>
+          </div>
+          <UButton label="Return to Menu" color="primary" size="lg" @click="gameStore.returnToMenu()" />
         </div>
       </div>
     </Transition>
@@ -65,6 +73,31 @@ import type { TimeScale } from '@game/engine/TimeSystem'
 const gameStore = useGameStore()
 const forcesStore = useForcesStore()
 const mapStore = useMapStore()
+
+// ── Victory overlay helpers ───────────────────────────────────────────────
+const winnerLabel = computed(() => {
+  switch (gameStore.scenarioWinner) {
+    case 'allied': return 'Allied Victory'
+    case 'japanese': return 'Japanese Victory'
+    default: return 'Draw'
+  }
+})
+const winnerColor = computed(() => {
+  switch (gameStore.scenarioWinner) {
+    case 'allied': return 'text-blue-400'
+    case 'japanese': return 'text-red-400'
+    default: return 'text-amber-400'
+  }
+})
+const resultLine = computed(() => {
+  const ap = gameStore.alliedPoints
+  const jp = gameStore.japanesePoints
+  if (ap === jp) return 'The battle ended in a draw.'
+  const margin = Math.abs(ap - jp)
+  return ap > jp
+    ? `Allied forces prevailed by ${margin} point${margin !== 1 ? 's' : ''}.`
+    : `Japanese forces prevailed by ${margin} point${margin !== 1 ? 's' : ''}.`
+})
 
 // ── Modal visibility ──────────────────────────────────────────────────────
 const showOrderModal = ref(false)

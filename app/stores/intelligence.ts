@@ -1,4 +1,4 @@
-import type { ContactRecord, SightingReport, Side } from '@game/types'
+import type { ContactRecord, SightingReport, Side, CombatEvent } from '@game/types'
 import type { GameSnapshot } from '@game/engine/GameEngine'
 
 export const useIntelligenceStore = defineStore('intelligence', () => {
@@ -7,6 +7,7 @@ export const useIntelligenceStore = defineStore('intelligence', () => {
   const alliedContacts = ref<Map<string, ContactRecord>>(new Map())
   const japaneseContacts = ref<Map<string, ContactRecord>>(new Map())
   const sightingLog = ref<SightingReport[]>([])
+  const combatLog = ref<CombatEvent[]>([])
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -51,18 +52,28 @@ export const useIntelligenceStore = defineStore('intelligence', () => {
         ...sightingLog.value
       ].slice(0, 200)
     }
+
+    // Prepend new combat events (most recent first, cap at 100)
+    if (snapshot.combatEvents.length > 0) {
+      combatLog.value = [
+        ...snapshot.combatEvents,
+        ...combatLog.value
+      ].slice(0, 100)
+    }
   }
 
   function clear(): void {
     alliedContacts.value = new Map()
     japaneseContacts.value = new Map()
     sightingLog.value = []
+    combatLog.value = []
   }
 
   return {
     alliedContacts,
     japaneseContacts,
     sightingLog,
+    combatLog,
     activeAlliedContacts,
     activeJapaneseContacts,
     activeContactsFor,

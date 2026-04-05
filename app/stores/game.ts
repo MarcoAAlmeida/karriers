@@ -13,6 +13,9 @@ export const useGameStore = defineStore('game', () => {
   const timeScale = ref<TimeScale>(1)
   const isPaused = ref(true)
   const stepFraction = ref(0)   // 0–1 for rendering interpolation
+  const scenarioWinner = ref<'allied' | 'japanese' | 'draw' | null>(null)
+  const alliedPoints = ref(0)
+  const japanesePoints = ref(0)
 
   /**
    * The engine instance — stored in a shallowRef to prevent Vue from
@@ -53,10 +56,13 @@ export const useGameStore = defineStore('game', () => {
     // The game store only tracks time and phase.
   }
 
-  function onScenarioEnded({ time }: { winner: string; time: GameTime }): void {
+  function onScenarioEnded({ winner, time, alliedPoints: ap, japanesePoints: jp }: { winner: 'allied' | 'japanese' | 'draw'; time: GameTime; alliedPoints: number; japanesePoints: number }): void {
     currentTime.value = { ...time }
     phase.value = 'ended'
     isPaused.value = true
+    scenarioWinner.value = winner
+    alliedPoints.value = ap
+    japanesePoints.value = jp
   }
 
   // ── Controls ──────────────────────────────────────────────────────────────
@@ -82,6 +88,9 @@ export const useGameStore = defineStore('game', () => {
     engine.value = null
     phase.value = 'menu'
     isPaused.value = true
+    scenarioWinner.value = null
+    alliedPoints.value = 0
+    japanesePoints.value = 0
   }
 
   return {
@@ -91,6 +100,9 @@ export const useGameStore = defineStore('game', () => {
     timeScale,
     isPaused,
     stepFraction,
+    scenarioWinner,
+    alliedPoints,
+    japanesePoints,
     engine,
     // Actions
     initEngine,
