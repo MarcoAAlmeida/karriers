@@ -4,6 +4,61 @@ Most recent sprint always on top.
 
 ---
 
+## Sprint 11 — Strike UX + Golden Flow E2E (completed 2026-04-05)
+
+**Goal:** Make strike missions feel real to the player, prove the core loop with automated E2E tests, and add quality-of-life improvements to the Air Ops modal.
+
+### Delivered
+
+#### Renderer — animated strike dot (`app/composables/usePixiRenderer.ts`)
+- `planOriginPx: Map<string, {x,y}>` captures the carrier's pixel position the moment a plan first goes `airborne` — arc no longer warps as the carrier moves
+- `strikeDotLayer: Graphics` (new layer between flight paths and selection ring) redrawn every Pixi frame
+- `bezierPoint(t, p0, cp, p1)` helper evaluates `B(t)` on the same quadratic bezier as the static arc
+- **Outbound dot** (amber): `t = (nowMin − launchMin) / (etaMin − launchMin)` + `stepFraction × 30` for sub-step smoothness
+- **Return dot** (grey): `t = (nowMin − etaMin) / (returnEtaMin − etaMin)`, tracks back to current carrier position
+- `onFlightPlansChanged` replaces the old bare watcher — captures origins for new plans, prunes stale ones, then calls `drawFlightPaths`
+- Return arc added to `drawFlightPaths` for `returning` plans (dimmer, thinner line)
+
+#### Renderer — sunk ship markers (`usePixiRenderer.ts`, `intelligence.ts`, `combat.ts`, `GameEngine.ts`)
+- `ship-sunk` `CombatEvent` extended with `hex: HexCoord` (TG position at time of sinking)
+- `emitShipSunk` in `GameEngine` looks up the TG position and includes it in the event
+- `sunkMarkers: ref<Array<{hex, side, shipId}>>` added to `useIntelligenceStore`; populated from incoming `ship-sunk` events, deduplicated by `shipId`, cleared on `returnToMenu`
+- `sunkMarkerLayer: Container` (new layer between contacts and units) rebuilt whenever `intelStore.sunkMarkers` changes
+- Each marker: 30 px dark-red diamond (larger than the 24 px contact diamond it replaces) with bold red `✕` glyph — visible at default zoom, drawn at the sinking hex so it overlays the contact position
+
+#### Auto-speed after decisive moment (`app/composables/useGameEvents.ts`)
+- `SHIP_CLASSES` imported; `ShipSunk` handler now cross-references `classId` to detect enemy carrier kills; sets `enemyCarrierDown = ref(false)` flag
+- New `watch(() => forcesStore.squadrons, ...)` inside `attachToEngine`: when `enemyCarrierDown` is true and no allied squadron has `deckStatus === 'airborne'`, fires `setTimeScale(8)` and shows "All aircraft recovered — Advancing to maximum speed" info toast
+- `autoSpeedFired` guard prevents repeated triggers; both flags reset via `clearUnsubs` on engine change / unmount
+
+#### Air Ops modal UX (`app/components/menus/AirOpModal.vue`)
+- **Select All / Deselect All** button in the squadron header row (visible when ≥1 squadron available); `allSelected` computed drives the label toggle
+- **Auto-close + auto-resume**: `launchStrike()` now calls `open.value = false` then `if (gameStore.isPaused) gameStore.togglePause()` — modal disappears and simulation resumes in one click
+
+#### `__GAME_STATE__` + `__GAME_ACTIONS__` extensions (`app/plugins/gameState.client.ts`)
+- Ships now include `isCarrier: boolean` (derived from engine `shipClasses` lookup)
+- `contacts[]` array added: `id`, `lastKnownHex`, `contactType`, `confirmedTaskGroupId`
+- `sunkMarkers[]` array mirrors `intelStore.sunkMarkers`
+- `timeScale` added to top-level state
+- `__GAME_ACTIONS__` extended with `togglePause()` — lets Playwright resume the engine without fighting modal overlays
+- New `data-testid` attributes: `air-ops-btn`, `strike-squadron-row`, `strike-target-select`, `air-ops-airborne-content`
+
+#### E2E tests (`tests/e2e/golden-flow.spec.ts`) — 6 new tests, **19/19 passing (~32 s)**
+- **Step 1**: scenario loads paused with action bridge available
+- **Step 2**: time runs, sighting appears in Intel Log
+- **Step 3**: Task Force 16 selectable, TG panel opens, Air Ops button present
+- **Step 4**: Air Ops modal opens, Strike tab shows squadrons, Launch disabled until configured
+- **Full golden flow**: sighting → TF-16 selection → squadron config → launch → airborne plan confirmed → Airborne tab re-opened and verified
+- **Extended flow** (120 s budget, passes in ~7 s): resumes at 8×, waits for carrier-group contact, selects all TF-16 squadrons via UI, launches, waits for all plans recovered, verifies Japanese carrier `status === 'sunk'` + `isCarrier === true`, verifies 0 allied squadrons still airborne, verifies `sunkMarkers` populated, verifies `timeScale === 8` (auto-speed fired)
+
+### Architecture notes
+- `planOriginPx` is written once per plan (guarded by `planOriginPx.has(plan.id)`) — prevents origin drift if the watcher fires multiple times for the same plan
+- Sunk marker layer sits **below** unit tokens so live units can still be selected; above contacts so the `✕` covers the decaying orange diamond at the same hex
+- Auto-speed watch is registered inside `attachToEngine` and pushed into `unsubs`, so it is torn down and re-created cleanly on every engine change — no stale closure risk
+- E2E contact selection uses `contactType === 'carrier-group'` rather than `index: 1` to guarantee targeting Kido Butai rather than the out-of-range Invasion Force
+
+---
+
 ## Sprint 10 — Playwright E2E Test Suite (completed 2026-04-05)
 
 **Goal:** Introduce Playwright for end-to-end test automation covering initial navigation and scenario load stability, with a fully self-contained test runner.

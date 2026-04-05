@@ -5,62 +5,132 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 ---
 
-## Current State (end of Sprint 10)
+## Current State (end of Sprint 11)
 
 - ✅ Full engine: movement, search, fog of war, air ops, combat, damage, victory
-- ✅ PixiJS renderer: hex grid, unit tokens, flight path arcs, selection ring, FOW contacts at lastKnownHex
-- ✅ HUD: time controls, task group panel, order modal, air ops modal + strike launch tab, keyboard shortcuts, command palette, toasts
+- ✅ PixiJS renderer: hex grid, unit tokens, animated strike dots (outbound + return), flight path arcs anchored to launch position, sunk-ship markers (red ✕ diamond), FOW contacts at lastKnownHex, selection ring
+- ✅ HUD: time controls, task group panel, order modal, air ops modal (Select All, auto-close + auto-resume on launch), keyboard shortcuts, command palette, toasts
 - ✅ Scenario: Battle of Midway (4 TFs, 35 ships, 25 squadrons, 4 victory conditions)
-- ✅ Hex-click destination with `×` marker
-- ✅ Strike launch UI (squadron checklist, contact picker, range warning)
-- ✅ Fog-of-war rendering (confirmed contacts at lastKnownHex; uncontacted IJN TGs hidden)
-- ✅ CAP intercept bug fixed: flightPlans now threaded into resolveStrike → getCAPSquadrons
-- ✅ ShipDamaged event emitted from engine → toast handler fires on hits
-- ✅ Intel Log shows strike results, ship-damaged, and ship-sunk entries alongside sightings
+- ✅ Auto-speed: engine ramps to 8× when enemy carrier sinks and all allied planes are home
+- ✅ Sunk markers: permanent red ✕ diamond drawn at the hex where each ship went down
 - ✅ Scenario end screen: winner label, Allied/Japanese points, result line, Return to Menu
 - ✅ Vitest setup: 72 tests across 9 files — engine (25), stores (17), component behaviour (30); all green in < 1 s
-- ✅ Playwright E2E: 13/13 tests passing (~19 s); `pnpm test:e2e` fully self-contained
-- ✅ `window.__GAME_STATE__` dev plugin exposes Pinia state to Playwright
+- ✅ Playwright E2E: 19/19 tests passing (~32 s); `pnpm test:e2e` fully self-contained
+- ✅ `window.__GAME_STATE__` + `window.__GAME_ACTIONS__` dev bridge exposes full live state and game actions to Playwright
 - ❌ MapTiler basemap
+- ❌ Custom sprite art for unit tokens
+- ❌ Japanese AI (no enemy strikes yet)
+- ❌ CAP missions
+- ❌ Scout/reconnaissance missions
+- ❌ Strike event log / per-strike detail popup
+- ❌ Clickable in-flight squadrons
 
 ---
 
-## Sprint 11 — The "Golden Flow" E2E Test + Engine Stress Checks
+## Design Principle
 
-_Goal: Prove the absolute core loop of command and execution using automated E2E tests, strictly targeting currently implemented features (ignoring ⚠️ Planned items)._
-
-### Playwright E2E "Golden Flow"
-Implement a single, bulletproof test scenario that executes the following chain:
-1. **Scenario Load:** Game loads on pause at Mon 06:00.
-2. **Resume Time:** Click Play and wait for a sighting to hit the Intel Log.
-3. **Task Force Selection:** Use `window.__GAME_STATE__` to find TF-16 on the canvas, select it, and open the panel.
-4. **Mission Prep:** Open the Air Ops modal, go to the Strike tab, and check appropriate squadrons.
-5. **Launch:** Pick the target contact from the drop-down and click Launch.
-6. **Verify:** Confirm that the flight plan immediately transitions to the Airborne tab with an outbound status.
-
-### Vitest Engine Stress Tests (Non-E2E)
-Add lightweight, isolated tests to verify core loop physics don't break when pushed:
-- **Maximum Range Strike:** Validate that the engine accurately tracks extreme distance and successfully stops a strike launch if fuel calculations would make returning impossible.
-- **Deck Jam Stressor:** Simulate high deck traffic in the engine to confirm states correctly cycle through `hangared` → `spotted` → `airborne` without skipping or double-booking squadrons.
+**Prioritize complete gameplay over cosmetics.** A fully playable experience with colored dots is preferable to an incomplete experience with artwork and real map tiles. Cosmetic sprints (basemap, custom tokens) are deferred until the core gameplay loop — including enemy AI, CAP, scouting, and event feedback — is solid.
 
 ---
 
-# Future Sprints — UI Polish, MapTiler Basemap, and Scenario 2: Coral Sea
+# Gameplay Sprints
+
+## Sprint 12 — Enemy AI (Japanese Strike Operations)
+
+**Goal:** Japan plays back. The game has no tension until the enemy acts.
+
+- Implement a `JapaneseAI` controller that issues orders each game step on behalf of all Japanese task forces.
+- Initial AI behavior (rule-based heuristic):
+  - Detects Allied TFs within search range using existing `SearchSystem`.
+  - Launches strike waves toward the nearest detected Allied carrier/TF.
+  - Returns planes and re-arms before launching follow-up strikes.
+  - Moves TFs to close distance when no target is in range.
+- Wire AI controller into the game loop (runs after player orders, before simulation step).
+- Tune aggression so Midway feels historically plausible but beatable.
+- Add tests: AI launches at least one strike per scenario, AI does not crash when no targets are visible.
+
+---
+
+## Sprint 13 — Scout / Reconnaissance Missions
+
+**Goal:** Both sides can send scouts. Detection creates tension and drives decisions.
+
+- Add `MissionType.Scout` alongside existing strike missions.
+- Scout squadrons fly a search pattern over a target hex area; if an enemy TF is within their search radius, it becomes a confirmed contact.
+- Player UI: scout assignment in the Air Ops modal (select squadron → Scout → target hex).
+- Japanese AI schedules scout missions before committing to strikes (mirrors historical doctrine).
+- Contacts discovered by scouts are time-stamped and fade if not re-confirmed (existing FoW rules apply).
+- Distinguish scout contact markers visually from unconfirmed radar contacts (different icon or color dot).
+- Tests: scout mission completes, contact revealed, FoW updated correctly.
+
+---
+
+## Sprint 14 — CAP (Combat Air Patrol) Missions
+
+**Goal:** Defending carriers can intercept incoming strikes. Defense matters.
+
+- Add `MissionType.CAP` to the air ops system.
+- CAP fighters orbit their assigned TF hex; when an incoming enemy strike enters intercept range, an engagement is triggered before the strike reaches its target.
+- Engagement reduces strike effectiveness proportional to CAP strength vs. strike size (simple formula first, tunable later).
+- Player UI: CAP assignment in the Air Ops modal (select fighter squadron → CAP → assigned TF).
+- Japanese AI assigns CAP to its carriers based on perceived threat level.
+- Visual: CAP fighters shown as a small rotating dot ring around their assigned TF (distinct from strike dots).
+- Tests: CAP intercepts a strike, reduces damage, CAP fighters land and re-arm correctly.
+
+---
+
+## Sprint 15 — Scramble on Incoming Strike Detection
+
+**Goal:** Warning → decision → action. Creates the "scramble" moment that defines carrier warfare.
+
+- When a scout or search contact reveals an incoming enemy strike wave (enemy planes in flight toward a friendly TF), fire a `INCOMING_STRIKE_WARNING` event.
+- Trigger a non-blocking alert toast with target TF name, estimated time to arrival, and a one-click "Launch CAP" shortcut.
+- If the player has idle fighters and no CAP assigned, the alert prompts with a suggested CAP assignment.
+- Japanese AI responds symmetrically: scrambles CAP if Allied strike is detected inbound.
+- Tests: warning fires correctly, CAP can be assigned from the alert, no double-alerts per wave.
+
+---
+
+## Sprint 16 — Strike Event Log & Per-Strike Detail Popup
+
+**Goal:** Players can see what happened and why. Feedback closes the gameplay loop.
+
+- **Active event log panel**: a scrollable sidebar log showing all significant events in chronological order — strikes launched, contacts detected, intercepts, hits, misses, ships sunk. Distinct from the existing intelligence log (which covers strategic-level messages).
+- **Per-strike detail popup**: clicking any strike entry in the event log (or clicking an in-flight squadron dot on the map) opens a detail popup showing:
+  - Squadron name, mission type, origin carrier
+  - Target TF / ship
+  - Planes launched / planes lost to CAP / planes returning
+  - Hits scored, damage dealt (if resolved)
+  - ETA or time resolved
+- First version: list view only, no charts. Designed so detail cards can be enriched in future versions.
+- Log persists for the duration of the scenario; exportable as plain text is a future concern.
+- Tests: log entry created for each strike launch and resolution, popup opens with correct data.
+
+---
+
+## Sprint 17 — Clickable In-Flight Squadrons
+
+**Goal:** Players can inspect any moving squadron, not just carrier groups.
+
+- In-flight squadron dots are currently display-only. Make them interactive.
+- Click on any moving strike or scout dot on the map → opens the per-strike detail popup (from Sprint 16).
+- Hover tooltip: squadron name, mission, target, ETA.
+- Selection highlight: clicked squadron dot pulses or changes color while popup is open.
+- Ensure hit-testing works correctly when multiple dots overlap (z-order picker or small disambiguation menu).
+- Tests: click on a strike dot opens correct popup, hover shows tooltip, disambiguation works with overlapping dots.
+
+---
+
+# Cosmetic Sprints (deferred until gameplay is complete)
 
 ## Sprint A — MapTiler Basemap Integration
-
-### MapLibre (MapTiler) Pacific Ocean Basemap
 
 - Fully implement `useMapLibre.ts` to render MapLibre GL with MapTiler Ocean tiles under the PixiJS canvas.
 - Make PixiJS ocean layer transparent ("see-through").
 - Sync viewport: wheel/drag/zoom pans both Pixi and MapLibre; anchor, scale, and lat/lon correspondence at hex `(35, 55)` ↔ `(28.21°N, 177.37°W)`.
 - Fallback: PixiJS grid+terrain rendering if no MapTiler key is configured.
 - Refactor remaining terrain-drawing logic out of Pixi except for overlays (range ring, target markers, etc).
-
-#### Tactical Overlay (PixiJS):
-
 - Continue rendering tactical overlays: hex grid lines, flight path arcs, selection ring, unit tokens, fog of war markers.
-- Ensure tactical overlays sync visually on top of the geospatial basemap.
 
 ---
 
@@ -68,35 +138,39 @@ Add lightweight, isolated tests to verify core loop physics don't break when pus
 
 **Goal:** Use the new `public/assets/game/` art set for unit tokens, then layer faction badges/chips so shared base art can represent both Allied and Japanese forces.
 
-- Refactor unit rendering:
-  - Replace procedural circles with PixiJS Sprites/icons sourced from `public/assets/game/`:
-    - `fleet-carrier`, `battleship`, `heavy-cruiser`, `light-cruiser`, `destroyer`, `submarine`, plus `plane` for air/squadron iconography
-    - Use the same `fleet-carrier` base icon for Allied and Japanese carriers, with a small faction badge or colored chip for side distinction
-    - Use generic cruiser/destroyer/submarine art with overlay chips if needed for side or damage state
-  - Add an asset lookup layer so art can be swapped in per ship type/class later.
-- Asset naming pattern:
-  - Each primary asset folder is a canonical key, and the main icon file inside is named to match the folder: `fleet-carrier/fleet-carrier.png`, `battleship/battleship.png`, etc.
-- Current coverage in `public/assets/game/`:
-  - Covered: `fleet-carrier`, `battleship`, `heavy-cruiser`, `light-cruiser`, `destroyer`, `submarine`, `plane`
-  - Extra/not canonical: `PatrolBoat`, `Rescue Ship`
-- Missing canonical asset types for Sprint B:
-  - `light-carrier`, `escort-carrier`, `transport`, `oiler`
-- Naming alignment guidance:
-  - Game model uses canonical ship types: `fleet-carrier`, `light-carrier`, `escort-carrier`, `battleship`, `heavy-cruiser`, `light-cruiser`, `destroyer`, `submarine`, plus support types like `transport` and `oiler`.
-  - Keep asset folders aligned to those canonical names where possible, and reserve non-core folders for support/extras.
-- Nice to have, add simple status overlays and side indicators:
-  - `?` for contacts, damage/fuel badges, small overlay icons
-  - A small colored chip or badge lets shared base art serve both sides cleanly.
+- Replace procedural circles with PixiJS Sprites sourced from `public/assets/game/`:
+  - `fleet-carrier`, `battleship`, `heavy-cruiser`, `light-cruiser`, `destroyer`, `submarine`, `plane`
+  - Shared base art per type; small faction badge or colored chip distinguishes Allied vs. Japanese.
+- Asset naming pattern: each folder is a canonical key; main icon named to match (`fleet-carrier/fleet-carrier.png`).
+- Missing canonical assets for this sprint: `light-carrier`, `escort-carrier`, `transport`, `oiler`.
+- Status overlays: `?` for contacts, damage/fuel badges, side indicators.
 
 ---
 
 ## Sprint C — Visual Polish and Advanced Features
 
-- Implement range ring overlays (search/strike range)
-- Add destination and selection markers (UX clarity)
-- Hover/selection glow
-- Animate flight path arcs if time allows
-- Review performance (profile unit/overlay layers with hundreds of tokens active)
-- Prepare guideline for future artists to update assets without code changes
+- Range ring overlays (search/strike range).
+- Destination and selection markers.
+- Hover/selection glow.
+- Animated flight path arcs.
+- Performance profiling (unit/overlay layers with hundreds of tokens).
+- Artist handoff guide: update assets without code changes.
 
 ---
+
+# Long-Horizon Research
+
+## Evolutionary AI — Machine Learning Opponent
+
+**Goal:** Train a Japanese AI that discovers optimal tactics through self-play rather than hand-coded rules.
+
+This is a far-future initiative, noted here to shape architecture decisions made sooner.
+
+- **Approach:** Evolutionary / genetic algorithm where each "genome" encodes a Japanese tactical policy (weighting functions over game state: target priority, scout timing, CAP allocation, strike timing, TF routing).
+- **Fitness function:** score achieved by Japan across N simulated Midway runs against a fixed Allied player or a co-evolving Allied policy.
+- **Self-play loop:** populations of policies play against each other; fitter policies survive and mutate; over generations, dominant strategies emerge.
+- **Why evolutionary over deep RL:** the game state is small and turn-based; evolutionary methods are interpretable, require no GPU, and produce strategies that can be inspected and tuned by hand.
+- **Integration path:** the rule-based `JapaneseAI` from Sprint 12 provides the first genome template; the evolutionary trainer runs offline (Node script) and exports a trained policy weight set that the in-game AI loads at runtime.
+- **Long-term possibility:** Allied policy co-evolves alongside Japanese policy, producing historically interesting arms-race dynamics within the scenario constraints.
+
+This should be kept in mind when designing the AI interface in Sprint 12: prefer a data-driven policy object (weights/parameters) over hard-coded logic, so the evolutionary trainer can swap in trained genomes later.

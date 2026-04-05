@@ -85,7 +85,17 @@
 
               <!-- Squadron selection -->
               <div>
-                <p class="text-xs text-gray-400 mb-2 uppercase tracking-wide">Select Squadrons</p>
+                <div class="flex items-center justify-between mb-2">
+                  <p class="text-xs text-gray-400 uppercase tracking-wide">Select Squadrons</p>
+                  <UButton
+                    v-if="availableForStrike.length > 0"
+                    :label="allSelected ? 'Deselect All' : 'Select All'"
+                    size="xs"
+                    color="neutral"
+                    variant="ghost"
+                    @click="toggleSelectAll"
+                  />
+                </div>
                 <div v-if="!availableForStrike.length" class="text-sm text-gray-500 text-center py-2">
                   No squadrons available (must be hangared or spotted).
                 </div>
@@ -308,6 +318,19 @@ function aircraftTypeName(typeId: number): string {
   return AIRCRAFT_TYPES.find(t => t.id === typeId)?.name ?? `type ${typeId}`
 }
 
+const allSelected = computed(() =>
+  availableForStrike.value.length > 0 &&
+  availableForStrike.value.every(sq => strikeSelected.value.has(sq.id))
+)
+
+function toggleSelectAll(): void {
+  if (allSelected.value) {
+    strikeSelected.value = new Set()
+  } else {
+    strikeSelected.value = new Set(availableForStrike.value.map(sq => sq.id))
+  }
+}
+
 function launchStrike(): void {
   if (!canLaunchStrike.value || !props.taskGroupId || !strikeTargetHex.value) return
   gameStore.issueOrder({
@@ -316,10 +339,8 @@ function launchStrike(): void {
     squadronIds: [...strikeSelected.value],
     targetHex: strikeTargetHex.value,
   })
-  // Reset after launch
-  strikeSelected.value = new Set()
-  strikeTargetContactId.value = ''
-  manualQ.value = null
-  manualR.value = null
+  // Close modal and resume simulation so the order is processed immediately
+  open.value = false
+  if (gameStore.isPaused) gameStore.togglePause()
 }
 </script>

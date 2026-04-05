@@ -190,17 +190,17 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       token.x = px.x
       token.y = px.y
 
-      // Dark red circle — visually distinct from live unit tokens and contact diamonds
+      // Outer dark-red diamond — same shape as a contact but larger and clearly sunk
       const g = new Graphics()
-      g.circle(0, 0, 11)
-        .fill({ color: 0x550000, alpha: 0.85 })
-        .stroke({ color: 0xcc2200, width: 1.5 })
+      g.poly([-15, 0, 0, -15, 15, 0, 0, 15])
+        .fill({ color: 0x6b0000, alpha: 0.92 })
+        .stroke({ color: 0xff2200, width: 2 })
       token.addChild(g)
 
-      // ✕ glyph
+      // Bold ✕ centred on the diamond, large enough to read at default zoom
       const lbl = new Text({
         text: '✕',
-        style: { fill: 0xff6666, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' },
+        style: { fill: 0xff8888, fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold' },
       })
       lbl.anchor.set(0.5, 0.5)
       token.addChild(lbl)

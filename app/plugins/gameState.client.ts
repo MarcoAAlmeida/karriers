@@ -30,6 +30,7 @@ export default defineNuxtPlugin(() => {
       return {
         phase: gameStore.phase,
         isPaused: gameStore.isPaused,
+        timeScale: gameStore.timeScale,
         currentTime: { ...gameStore.currentTime },
 
         taskGroups: [...forcesStore.taskGroups.values()].map(tg => ({

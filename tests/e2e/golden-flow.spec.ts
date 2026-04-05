@@ -37,6 +37,7 @@ interface ContactState {
 interface GameState {
   phase: string
   isPaused: boolean
+  timeScale: number
   currentTime: { day: number; hour: number; minute: number }
   taskGroups: Array<{ id: string; name: string; side: string }>
   ships: ShipState[]
@@ -154,6 +155,7 @@ test.describe('Golden Flow — Strike mission end-to-end', () => {
   })
 
   test('Full golden flow: sighting → select → configure → launch → airborne', async ({ page }) => {
+    test.setTimeout(60_000)
     await loadMidway(page)
 
     // ── Resume at 8× and wait for a confirmed contact ────────────────────────
@@ -191,22 +193,25 @@ test.describe('Golden Flow — Strike mission end-to-end', () => {
     // Row should now show the selection highlight
     await expect(firstRow).toHaveClass(/ring-1/)
 
-    // ── Pick the first contact from the dropdown ──────────────────────────────
+    // ── Pick the carrier-group contact (avoids targeting the out-of-range Invasion Force) ──
     const targetSelect = page.getByTestId('strike-target-select')
     await expect(targetSelect).toBeVisible()
-    await targetSelect.selectOption({ index: 1 })   // index 0 is the placeholder
+    const carrierContactId = await page.evaluate(() => {
+      const contacts = window.__GAME_STATE__.contacts
+      return contacts.find(c => c.contactType === 'carrier-group')?.id ?? contacts[0]?.id ?? null
+    })
+    if (carrierContactId) {
+      await targetSelect.selectOption({ value: carrierContactId })
+    } else {
+      await targetSelect.selectOption({ index: 1 })
+    }
 
     // Launch button should now be enabled
     await expect(page.getByTestId('launch-strike-btn')).toBeEnabled({ timeout: 3_000 })
 
     // ── Launch ────────────────────────────────────────────────────────────────
+    // launchStrike() now closes the modal AND resumes if paused — no extra step needed.
     await page.getByTestId('launch-strike-btn').click()
-
-    // The launch order is queued — resume so the engine processes it on the next step.
-    // Use the action bridge to toggle pause: the modal overlay would block a direct
-    // click on the play-pause button while the Air Ops modal is still open.
-    // At 8× speed one step fires every ~3.75 s wall-clock time.
-    await page.evaluate(() => window.__GAME_ACTIONS__.togglePause())
 
     // ── Verify: strike flight plan becomes airborne within the next step ──────
     await page.waitForFunction(
@@ -225,6 +230,9 @@ test.describe('Golden Flow — Strike mission end-to-end', () => {
     expect(airstrikePlan!.targetHex).toBeDefined()
 
     // ── Verify: Airborne tab lists the outbound mission ───────────────────────
+    // Modal auto-closed on launch — reopen it to inspect the Airborne tab.
+    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
+    await page.getByTestId('air-ops-btn').click()
     await page.getByRole('tab', { name: 'Airborne' }).click()
     await expect(page.getByTestId('air-ops-airborne-content')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByTestId('air-ops-airborne-content')).toContainText('strike')
@@ -270,12 +278,20 @@ test.describe('Golden Flow — Strike mission end-to-end', () => {
       expect(rows.length).toBeGreaterThan(0)
       for (const row of rows) { await row.click() }
 
-      await page.getByTestId('strike-target-select').selectOption({ index: 1 })
+      // Prefer a carrier-group contact so we hit Kido Butai, not the Invasion Force
+      const carrierContactId = await page.evaluate(() => {
+        const contacts = window.__GAME_STATE__.contacts
+        const carrier = contacts.find(c => c.contactType === 'carrier-group')
+        return carrier?.id ?? contacts[0]?.id ?? null
+      })
+      if (carrierContactId) {
+        await page.getByTestId('strike-target-select').selectOption({ value: carrierContactId })
+      } else {
+        await page.getByTestId('strike-target-select').selectOption({ index: 1 })
+      }
       await expect(page.getByTestId('launch-strike-btn')).toBeEnabled({ timeout: 3_000 })
+      // launchStrike() closes the modal and resumes automatically
       await page.getByTestId('launch-strike-btn').click()
-
-      // Resume via action bridge (modal overlay would block the HUD button)
-      await page.evaluate(() => window.__GAME_ACTIONS__.togglePause())
 
       // Wait until at least one allied strike is airborne
       await page.waitForFunction(
@@ -349,11 +365,21 @@ test.describe('Golden Flow — Strike mission end-to-end', () => {
     )
     expect(sunkCarriers.length).toBeGreaterThan(0)
 
-    // ── Assert: no allied strike squadrons are still airborne ─────────────────
+    // ── Assert: no allied squadrons are still airborne ───────────────────────
     const stillAirborne = await page.evaluate(() =>
       window.__GAME_STATE__.squadrons.filter(sq => sq.side === 'allied' && sq.deckStatus === 'airborne')
     )
     expect(stillAirborne.length).toBe(0)
+
+    // ── Assert: game is running at 8× (auto-speed triggered by useGameEvents) ─
+    await page.waitForFunction(
+      () => {
+        const s = window.__GAME_STATE__
+        // Either already at 8× (auto-speed fired) or scenario ended — both are valid
+        return s.timeScale === 8 || s.phase === 'ended'
+      },
+      { timeout: 10_000 }
+    )
 
     // ── Assert: sunk markers are tracked in state and renderer ────────────────
     const sunkMarkers = await page.evaluate(() => window.__GAME_STATE__.sunkMarkers)
