@@ -4,6 +4,38 @@ Most recent sprint always on top.
 
 ---
 
+## Sprint 7 — Make It Playable (completed 2026-04-04)
+
+**Goal:** Hex-click destination, Strike Launch UI, and fog-of-war rendering — the three features needed to play the game meaningfully.
+
+### Delivered
+
+- **Hex-click destination** (`app/composables/usePixiRenderer.ts`):
+  - `pointerup` handler now issues `set-destination` order when an allied TG is selected and the player clicks an empty hex
+  - Destination `×` cross drawn on `selectionLayer` each tick via `hexToPixel(tg.destination)` — cleared automatically when TG arrives or destination is updated
+
+- **Fog-of-war rendering** (`app/composables/usePixiRenderer.ts`):
+  - Added `getContactForTG(tgId)` helper — scans `intelStore.activeAlliedContacts` for `confirmedTaskGroupId === tgId`
+  - `rebuildUnitTokens` now FOW-aware: enemy TGs with no confirmed contact have their token removed; enemy TGs with a confirmed contact render an orange diamond at `contact.lastKnownHex` (not true engine position)
+  - `onTick` skips interpolation for Japanese tokens (static at `lastKnownHex`)
+  - Added `watch(() => intelStore.activeAlliedContacts, ...)` to retrigger `rebuildUnitTokens` when the contact picture changes
+
+- **Strike Launch UI** (`app/components/menus/AirOpModal.vue`):
+  - New **Strike** tab (4th tab) in `AirOpModal`
+  - Squadron checklist filtered to `deckStatus === 'hangared' | 'spotted'` and no current mission; click-to-toggle with visual selection ring
+  - Aircraft type name shown per squadron via `AIRCRAFT_TYPES` lookup
+  - Target picker: dropdown from `intelStore.activeAlliedContacts` (formatted as `type @ (q, r)`) plus manual Q/R hex inputs as fallback
+  - Range warning: checks each selected squadron's `maxRange` vs `hexDistance * 20 NM`; shows yellow banner if any exceed range
+  - Launch button disabled until ≥1 squadron selected and target set; fires `launch-strike` order and resets form
+  - Strike state resets on modal close or TG selection change
+
+### Architecture notes
+- Enemy contact tokens are positioned in `buildUnitToken` at `contactPos` (lastKnownHex) and excluded from `prevPos`/`currPos` interpolation — they simply sit at whatever position the rebuild sets
+- `getContactForTG` only matches *confirmed* contacts (`confirmedTaskGroupId` set); unconfirmed sightings do not reveal specific TG identity (consistent with FogOfWarSystem design)
+- `AirOpModal` is widened from `sm:max-w-lg` to `sm:max-w-xl` to accommodate the strike checklist
+
+---
+
 ## Sprint 6 — Vue HUD, Modals & Keyboard Shortcuts (completed 2026-04-04)
 
 **Goal:** Full interactive HUD layer — extracted components, order/air-ops modals, keyboard shortcuts, command palette, and engine event toasts.

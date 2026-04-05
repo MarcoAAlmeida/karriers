@@ -113,7 +113,7 @@ export class AirOpsSystem {
         const aircraft = this.aircraftTypes.get(sq.aircraftTypeId)
         if (aircraft) {
           const distNm = hexDistance(carrierPosition, order.targetHex) * NM_PER_HEX
-          const maxStrikeRange = aircraft.maxRange * (0.5 - FUEL_RESERVE)
+          const maxStrikeRange = aircraft.maxRange * 0.5 * (1 - FUEL_RESERVE)
           if (distNm > maxStrikeRange) continue  // out of range
         }
       }

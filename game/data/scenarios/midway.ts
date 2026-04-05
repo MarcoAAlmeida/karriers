@@ -4,10 +4,10 @@
  * Map origin: NW Pacific, flat-top hex grid 72×84 at 20 NM/hex
  * Key positions (approximate, June 4 0600 local):
  *   Midway Atoll:    q=35, r=55
- *   US TF-16:        q=51, r=39  (~320 NM NE of Midway)
- *   US TF-17:        q=49, r=42  (~280 NM NE of Midway)
- *   IJN Kido Butai:  q=23, r=43  (~240 NM NW of Midway)
- *   IJN Invasion:    q=24, r=65  (~220 NM SW of Midway)
+ *   US TF-16:        q=43, r=49  (~170 NM NE of Midway)
+ *   US TF-17:        q=44, r=50  (~160 NM NE of Midway)
+ *   IJN Kido Butai:  q=27, r=51  (~170 NM NW of Midway)
+ *   IJN Invasion:    q=20, r=62  (~300 NM SW of Midway)
  */
 
 import type { Scenario, ScenarioForce } from '../../types/scenario'
@@ -146,7 +146,7 @@ const taskGroups: TaskGroup[] = [
     side: 'allied',
     flagshipId: USS_ENTERPRISE,
     shipIds: alliedShipsTF16.map(s => s.id),
-    position: { q: 51, r: 39 },
+    position: { q: 43, r: 49 },
     course: 220,
     speed: 15,
     currentOrder: 'search',
@@ -158,7 +158,7 @@ const taskGroups: TaskGroup[] = [
     side: 'allied',
     flagshipId: USS_YORKTOWN,
     shipIds: alliedShipsTF17.map(s => s.id),
-    position: { q: 49, r: 42 },
+    position: { q: 44, r: 50 },
     course: 215,
     speed: 15,
     currentOrder: 'search',
@@ -170,7 +170,7 @@ const taskGroups: TaskGroup[] = [
     side: 'japanese',
     flagshipId: IJN_AKAGI,
     shipIds: japaneseShipsKB.map(s => s.id),
-    position: { q: 23, r: 43 },
+    position: { q: 27, r: 51 },
     course: 135,
     speed: 25,
     destination: { q: 35, r: 55 },
@@ -184,7 +184,7 @@ const taskGroups: TaskGroup[] = [
     side: 'japanese',
     flagshipId: IJN_KUMANO,
     shipIds: japaneseShipsInvasion.map(s => s.id),
-    position: { q: 24, r: 65 },
+    position: { q: 20, r: 62 },
     course: 90,
     speed: 14,
     destination: { q: 35, r: 55 },
@@ -310,8 +310,9 @@ export const MIDWAY: Scenario = {
       // Clear weather near Midway and US carrier operating area
       hexes: [
         { q: 35, r: 55 }, { q: 36, r: 55 }, { q: 37, r: 55 },
-        { q: 48, r: 40 }, { q: 49, r: 40 }, { q: 50, r: 40 },
-        { q: 50, r: 39 }, { q: 51, r: 39 }, { q: 52, r: 39 }
+        { q: 42, r: 48 }, { q: 43, r: 48 }, { q: 44, r: 48 },
+        { q: 42, r: 49 }, { q: 43, r: 49 }, { q: 44, r: 49 },
+        { q: 43, r: 50 }, { q: 44, r: 50 }, { q: 45, r: 50 }
       ],
       condition: { visibility: 100, windSpeed: 12, ceiling: 8000, seaState: 2 }
     }

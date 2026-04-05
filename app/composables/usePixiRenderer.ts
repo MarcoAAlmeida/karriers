@@ -1,6 +1,6 @@
 import { Application, Container, Graphics, Text } from 'pixi.js'
 import type { Ref } from 'vue'
-import type { TaskGroup, FlightPlan } from '@game/types'
+import type { TaskGroup, FlightPlan, HexCoord, ContactRecord } from '@game/types'
 import { hexToPixel, hexCorners, GRID_WIDTH, GRID_HEIGHT, pixelToHex } from '@game/utils/hexMath'
 import { useHexMap } from './useHexMap'
 
@@ -121,6 +121,8 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     watch(() => forcesStore.flightPlans, drawFlightPaths, { immediate: true })
     watch(() => mapStore.selectedTaskGroupId, drawSelection)
     watch(() => gameStore.phase, onPhaseChanged)
+    // Rebuild tokens when contact picture changes (fog-of-war)
+    watch(() => intelStore.activeAlliedContacts, () => rebuildUnitTokens(forcesStore.taskGroups))
   })
 
   onUnmounted(() => {
@@ -165,6 +167,12 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     }
   }
 
+  // ── Fog-of-war helpers ───────────────────────────────────────────────────
+
+  function getContactForTG(tgId: string): ContactRecord | undefined {
+    return intelStore.activeAlliedContacts.find(c => c.confirmedTaskGroupId === tgId)
+  }
+
   // ── Units ────────────────────────────────────────────────────────────────
 
   function onTaskGroupsChanged(tgs: Map<string, TaskGroup>): void {
@@ -191,6 +199,40 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     }
 
     for (const tg of tgs.values()) {
+      const isAllied = tg.side === 'allied'
+
+      if (!isAllied) {
+        // Fog-of-war: enemy TGs only render if there is a confirmed active contact
+        const contact = getContactForTG(tg.id)
+        let token = unitTokens.get(tg.id)
+        if (!contact) {
+          // No contact — remove token
+          if (token) {
+            unitLayer.removeChild(token)
+            unitTokens.delete(tg.id)
+          }
+          continue
+        }
+        // Confirmed contact — render diamond at lastKnownHex
+        if (!token) {
+          token = buildUnitToken(tg, contact.lastKnownHex)
+          unitLayer.addChild(token)
+          unitTokens.set(tg.id, token)
+        } else {
+          token.removeChildren()
+          const rebuilt = buildUnitToken(tg, contact.lastKnownHex)
+          for (const child of rebuilt.children.slice()) {
+            rebuilt.removeChild(child)
+            token.addChild(child)
+          }
+          const px = hexToPixel(contact.lastKnownHex)
+          token.x = px.x
+          token.y = px.y
+        }
+        continue
+      }
+
+      // Allied TG — normal rendering
       let token = unitTokens.get(tg.id)
       if (!token) {
         token = buildUnitToken(tg)
@@ -208,9 +250,9 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     }
   }
 
-  function buildUnitToken(tg: TaskGroup): Container {
+  function buildUnitToken(tg: TaskGroup, contactPos?: HexCoord): Container {
     const isAllied = tg.side === 'allied'
-    const isContact = !isAllied && !intelStore.isVisible(tg.id, 'allied')
+    const isContact = contactPos !== undefined   // only called with contactPos for enemy contact tokens
 
     const token = new Container()
     token.label = tg.id
@@ -257,7 +299,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     token.cursor = 'pointer'
     token.on('pointertap', () => mapStore.selectTaskGroup(tg.id))
 
-    const px = hexToPixel(tg.position)
+    const px = hexToPixel(contactPos ?? tg.position)
     token.x = px.x
     token.y = px.y
 
@@ -271,6 +313,10 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     const fraction = gameStore.stepFraction
 
     for (const [id, token] of unitTokens) {
+      const tg = forcesStore.taskGroups.get(id)
+      // Enemy contact tokens are static at lastKnownHex — skip interpolation
+      if (tg && tg.side === 'japanese') continue
+
       const prev = prevPos.get(id)
       const curr = currPos.get(id)
       if (prev && curr) {
@@ -279,13 +325,24 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       }
     }
 
-    // Update selection ring position to follow the selected token
+    // Update selection ring + destination marker for the selected TG
     const selId = mapStore.selectedTaskGroupId
     if (selId) {
       const token = unitTokens.get(selId)
       if (token) {
         selectionLayer.clear()
         selectionLayer.circle(token.x, token.y, 18).stroke({ color: COL.selection, width: 2, alpha: 0.9 })
+
+        // Draw destination × marker
+        const tg = forcesStore.taskGroups.get(selId)
+        if (tg?.destination) {
+          const dest = hexToPixel(tg.destination)
+          const r = 9
+          selectionLayer
+            .moveTo(dest.x - r, dest.y - r).lineTo(dest.x + r, dest.y + r)
+            .moveTo(dest.x + r, dest.y - r).lineTo(dest.x - r, dest.y + r)
+            .stroke({ color: COL.selection, width: 2, alpha: 0.75 })
+        }
       }
     }
   }
@@ -418,10 +475,18 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
           const rect = canvas.getBoundingClientRect()
           const wx = (e.clientX - rect.left - vpX) / vpZoom
           const wy = (e.clientY - rect.top - vpY) / vpZoom
-          // Only deselect if no unit token was hit (token tap is handled by its own listener)
-          // We rely on Pixi's event bubbling stopping at the token
+          // We rely on Pixi's event bubbling stopping at the token for token taps
           const hovHex = pixelToHex(wx, wy)
           mapStore.setHoveredHex(hovHex)
+
+          // If an allied TG is selected, set destination to the clicked hex
+          const selId = mapStore.selectedTaskGroupId
+          if (selId) {
+            const tg = forcesStore.taskGroups.get(selId)
+            if (tg?.side === 'allied') {
+              gameStore.issueOrder({ type: 'set-destination', taskGroupId: selId, destination: hovHex })
+            }
+          }
         }
       }
     })
@@ -438,14 +503,16 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
   function centreViewport(): void {
     if (!app) return
-    const { width: gw, height: gh } = computeGridBounds()
     const sw = app.screen.width
     const sh = app.screen.height
-    // Start zoomed to fit map vertically with a small margin
-    const fitZoom = Math.min(sw / gw, sh / gh) * 0.9
-    vpZoom = fitZoom
-    vpX = (sw - gw * fitZoom) / 2
-    vpY = (sh - gh * fitZoom) / 2
+    // Start zoomed on the main battle area so tokens are visible.
+    // The player can zoom out with the scroll wheel to see the full grid.
+    // 0.65× → each hex ~26px wide, token radius ~8px (visible and clickable).
+    vpZoom = 0.65
+    // q=36,r=51 centres between US carriers (q=43-44,r=49-50) and KB (q=27,r=51)
+    const center = hexToPixel({ q: 36, r: 51 })
+    vpX = sw / 2 - center.x * vpZoom
+    vpY = sh / 2 - center.y * vpZoom
   }
 
   function computeGridBounds(): { width: number; height: number } {

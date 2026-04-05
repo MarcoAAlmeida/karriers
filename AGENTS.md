@@ -9,7 +9,7 @@ Browser SPA remake of the 1984 SSG wargame "Carriers at War". Pacific WW2 carrie
 | File | Purpose |
 |---|---|
 | `docs/done/sprints.md` | Completed sprint log (most recent on top) |
-| `docs/vision/plan.md` | Upcoming work — sprints 7, 8, 9 |
+| `docs/roadmap.md` | Upcoming work — sprints 7, 8, 9 |
 | `docs/vision/karriers_at_war_inspiration.md` | Original game reference |
 
 ---

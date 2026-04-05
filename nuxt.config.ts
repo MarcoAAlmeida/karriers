@@ -10,6 +10,11 @@ export default defineNuxtConfig({
 
   ssr: false,
 
+  colorMode: {
+    preference: 'dark',
+    fallback: 'dark'
+  },
+
   devtools: {
     enabled: true
   },

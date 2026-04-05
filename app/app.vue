@@ -1,4 +1,8 @@
 <script setup>
+// Force dark mode — this is a game, not a document; no light mode needed
+const colorMode = useColorMode()
+colorMode.preference = 'dark'
+
 useHead({
   title: 'Karriers at War',
   meta: [
