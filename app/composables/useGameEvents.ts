@@ -1,3 +1,5 @@
+import { SHIP_CLASSES } from '@game/data/shipClasses'
+
 /**
  * useGameEvents — subscribes to GameEngine events and fires toast notifications.
  * Mount once inside a component that is alive for the lifetime of a scenario.
@@ -7,11 +9,20 @@ export function useGameEvents() {
   const forcesStore = useForcesStore()
   const toast = useToast()
 
-  // Unsubscribe callbacks returned by engine.events.on()
+  // Unsubscribe callbacks returned by engine.events.on() and Vue watchers
   const unsubs: (() => void)[] = []
+
+  // ── Auto-speed state ──────────────────────────────────────────────────────
+  // Set when an enemy carrier is confirmed sunk; cleared on engine change.
+  const enemyCarrierDown = ref(false)
+  // Prevents the 8× ramp from firing more than once per scenario.
+  const autoSpeedFired = ref(false)
 
   function clearUnsubs() {
     unsubs.splice(0).forEach(fn => fn())
+    // Reset auto-speed flags so a fresh engine starts clean
+    enemyCarrierDown.value = false
+    autoSpeedFired.value = false
   }
 
   function attachToEngine() {
@@ -40,7 +51,39 @@ export function useGameEvents() {
         icon: 'i-heroicons-x-circle',
         duration: 8000
       })
+
+      // Detect enemy carrier kill — will trigger auto-speed once planes are home
+      if (side === 'japanese' && ship) {
+        const sc = SHIP_CLASSES.find(c => c.id === ship.classId)
+        if (sc?.type.includes('carrier')) {
+          enemyCarrierDown.value = true
+        }
+      }
     }))
+
+    // ── Auto-speed: ramp to 8× when enemy carrier is down + all Allied planes home ──
+    const stopAutoSpeed = watch(() => forcesStore.squadrons, (squads) => {
+      if (!enemyCarrierDown.value || autoSpeedFired.value) return
+      if (gameStore.phase === 'ended') return
+
+      const alliedAirborne = [...squads.values()].filter(
+        sq => sq.side === 'allied' && sq.deckStatus === 'airborne'
+      )
+      if (alliedAirborne.length > 0) return
+
+      autoSpeedFired.value = true
+      if (gameStore.timeScale < 8) {
+        gameStore.setTimeScale(8)
+        toast.add({
+          title: 'All aircraft recovered',
+          description: 'Advancing to maximum speed',
+          color: 'info',
+          icon: 'i-heroicons-forward',
+          duration: 4000
+        })
+      }
+    })
+    unsubs.push(stopAutoSpeed)
 
     unsubs.push(engine.events.on('ShipDamaged', (event) => {
       if (event.type !== 'ship-damaged') return

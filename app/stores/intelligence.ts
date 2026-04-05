@@ -1,4 +1,4 @@
-import type { ContactRecord, SightingReport, Side, CombatEvent } from '@game/types'
+import type { ContactRecord, SightingReport, Side, CombatEvent, HexCoord } from '@game/types'
 import type { GameSnapshot } from '@game/engine/GameEngine'
 
 export const useIntelligenceStore = defineStore('intelligence', () => {
@@ -8,6 +8,8 @@ export const useIntelligenceStore = defineStore('intelligence', () => {
   const japaneseContacts = ref<Map<string, ContactRecord>>(new Map())
   const sightingLog = ref<SightingReport[]>([])
   const combatLog = ref<CombatEvent[]>([])
+  /** Permanent record of where ships were sunk, for canvas markers. */
+  const sunkMarkers = ref<Array<{ hex: HexCoord; side: Side; shipId: string }>>([])
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -59,6 +61,13 @@ export const useIntelligenceStore = defineStore('intelligence', () => {
         ...snapshot.combatEvents,
         ...combatLog.value
       ].slice(0, 100)
+
+      // Accumulate sunk markers (deduplicated by shipId — they persist permanently)
+      for (const evt of snapshot.combatEvents) {
+        if (evt.type === 'ship-sunk' && !sunkMarkers.value.some(m => m.shipId === evt.shipId)) {
+          sunkMarkers.value = [...sunkMarkers.value, { hex: evt.hex, side: evt.side, shipId: evt.shipId }]
+        }
+      }
     }
   }
 
@@ -67,6 +76,7 @@ export const useIntelligenceStore = defineStore('intelligence', () => {
     japaneseContacts.value = new Map()
     sightingLog.value = []
     combatLog.value = []
+    sunkMarkers.value = []
   }
 
   return {
@@ -74,6 +84,7 @@ export const useIntelligenceStore = defineStore('intelligence', () => {
     japaneseContacts,
     sightingLog,
     combatLog,
+    sunkMarkers,
     activeAlliedContacts,
     activeJapaneseContacts,
     activeContactsFor,

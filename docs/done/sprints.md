@@ -4,6 +4,81 @@ Most recent sprint always on top.
 
 ---
 
+## Sprint 10 — Playwright E2E Test Suite (completed 2026-04-05)
+
+**Goal:** Introduce Playwright for end-to-end test automation covering initial navigation and scenario load stability, with a fully self-contained test runner.
+
+### Delivered
+
+- **`playwright.config.ts`** — Playwright 1.52 configured for Chromium; `webServer` block auto-starts/stops `pnpm dev` so `pnpm test:e2e` is fully self-contained; `PLAYWRIGHT_REUSE_SERVER=1` skips startup when iterating; GPU flags preserved for PixiJS WebGL headless
+- **`app/plugins/gameState.client.ts`** — dev-only Nuxt plugin exposing `window.__GAME_STATE__` as a live property getter; pulls `phase`, `isPaused`, `currentTime`, `taskGroups`, `ships`, `squadrons`, `flightPlans`, `alliedContactCount`, `sightingLogLength`, `combatLogLength` from Pinia stores at read time
+- **`data-testid` additions:**
+  - `ScenarioSelectScreen.vue`: `scenario-card-{id}`, `play-btn-{id}`, `coming-soon-{id}`
+  - `TimeControls.vue`: `hud-time-controls`, `play-pause-btn`
+  - `TaskGroupPanel.vue`: `tg-panel`
+  - `GameCanvas.vue`: `game-canvas`
+  - `AirOpModal.vue`: `air-ops-tab-strike-content`, `launch-strike-btn`
+- **`tests/e2e/home.spec.ts`** — 5 tests: title/subtitle text, dark background (computed style), Midway card + Play button, Coral Sea Coming Soon, disabled opacity
+- **`tests/e2e/scenario-load.spec.ts`** — 8 tests: canvas non-zero dimensions, HUD shows 06:00, play-pause aria-label, `__GAME_STATE__` phase/TG count/allied+IJN split/ship count, paused at Mon 06:00, return to menu
+- **13/13 E2E tests passing** (~19 s)
+
+### Architecture notes
+- `window.__GAME_STATE__` uses `Object.defineProperty` with a `get()` function — each Playwright `evaluate()` call gets the live store state, not a snapshot taken at plugin init
+- `reuseExistingServer: !!process.env.PLAYWRIGHT_REUSE_SERVER` (not hardcoded `false`) keeps CI clean while letting developers skip the 8-second startup overhead
+- `beforeEach` in `scenario-load.spec.ts` gates on `window.__GAME_STATE__.taskGroups.length > 0` (not just canvas visibility) to avoid race conditions between Playwright assertions and Pinia store hydration
+
+---
+
+## Sprint 9 — Automated Test Suite (completed 2026-04-05)
+
+**Goal:** Full Vitest regression net covering the engine, Pinia stores, and component behaviour — so future sprints don't require manual playability checks.
+
+### Delivered
+
+- **`tests/setup.ts`** — Nuxt auto-import polyfill: sets `globalThis.defineStore`, `ref`, `computed`, `shallowRef`, `watch`, `watchEffect`, `onUnmounted`, `onMounted`, `useToast`, `defineShortcuts`; calls `setActivePinia(createPinia())` in `beforeEach` so each test gets a clean store
+- **Engine tests:**
+  - `tests/engine/DamageSystem.test.ts` — 12 tests: `applyHit` status transitions (`operational → damaged → on-fire → sunk`), fire spread, flooding, damage control, `processStep`, `applyStrikeHits` (deck-jam fire multiplier)
+  - `tests/engine/VictorySystem.test.ts` — 10 tests: `sink-carrier`, `survive-until`, `control-hex`, `sink-total-tonnage`, points tiebreak, draw on equal points
+- **Store tests:**
+  - `tests/stores/forces.test.ts` — 5 tests: `syncFromSnapshot` populates all maps; derived `getters`; `shipsInGroup` returns ships for a given TG; `clear()` resets state
+  - `tests/stores/game.test.ts` — 6 tests: uses `engine.events.emit('ScenarioEnded', {...})` directly to verify store handler; `phase`, `winner`, `alliedPoints`, `japanesePoints` all set correctly; `returnToMenu` resets
+  - `tests/stores/intelligence.test.ts` — 6 tests: sighting and combat log prepend + cap at 100; `clear()` resets both
+- **Component behaviour tests (logic-only, no DOM mount):**
+  - `tests/components/MiniLog.test.ts` — 9 tests: sighting/combat/sunk entry formatting and colour classes; merge sort order
+  - `tests/components/TaskGroupPanel.test.ts` — 15 tests: `shipStatusColor` all statuses; `hullColor` threshold boundaries; store integration
+  - `tests/components/TimeControls.test.ts` — 6 tests: `formattedTime` formatting (day/hour/minute), `togglePause`/`setTimeScale` wiring
+- **72 tests across 9 files — all green in < 1 s**
+
+### Architecture notes
+- `vitest.config.ts` `setupFiles` runs before test module resolution in Vitest's Vite-based loader, so `globalThis` polyfills land before store files import `defineStore` or `ref`
+- Component behaviour tests skip jsdom/happy-dom entirely — they extract and test the pure computed/logic functions that drive the UI, not the rendered DOM
+- `TypedEventEmitter.emit()` is public, enabling store tests to fire engine events directly without exposing internal store handler functions
+
+---
+
+## Sprint 8 — Combat Bug Fixes + Feedback UI (completed 2026-04-05)
+
+**Goal:** Make the existing engine observable — fix bugs preventing combat from working and add UI to surface results.
+
+### Delivered
+
+- **CAP intercept bug fix** (`game/engine/CombatSystem.ts`): `resolveStrike()` was called with `new Map()` for `flightPlans`, so CAP fighters were never found. Fixed: `processStep` threads `flightPlans` into `resolveStrike`; signature extended with `flightPlans: Map<string, FlightPlan>`; passed through to `getCAPSquadrons`
+- **ShipDamaged event** (`game/engine/GameEngine.ts`): the ship-damaged loop now names the event and emits `this.events.emit('ShipDamaged', dmgEvent)` so `useGameEvents.ts` toast handler fires on hits
+- **ScenarioEnded payload extended**: `EngineEvents.ScenarioEnded` now carries `{ winner, time, alliedPoints, japanesePoints }`; `ScenarioEnded` emit in `runStep` includes actual point totals from `VictorySystem`
+- **Combat Intel Log** (`app/stores/intelligence.ts` + `app/components/game/MiniLog.vue`):
+  - `useIntelligenceStore` adds `combatLog = ref<CombatEvent[]>([])`, populated from `snapshot.combatEvents` in `syncFromSnapshot`, capped at 100, cleared on `clear()`
+  - `MiniLog.vue` unified rewrite: `LogEntry` interface merging sightings and combat events; `sightingToEntry`/`combatToEntry` pure functions; colour classes by event type (strike-resolved amber, damaged orange, sunk red+bold); entries merged and sorted by game time, capped to 10 visible
+- **End screen** (`app/stores/game.ts` + `app/components/game/GameHUD.vue`):
+  - Store adds `scenarioWinner`, `alliedPoints`, `japanesePoints`; `onScenarioEnded` stores all three; `returnToMenu` resets them
+  - End overlay shows colour-coded winner label (Allied Victory / Japanese Victory / Draw), side-by-side points, and a prose result line
+- **Vitest setup**: `vitest`, `@nuxt/test-utils`, `@vue/test-utils` added; `"test": "vitest run"` script; `vitest.config.ts` with `node` env and `@game` alias; `CombatSystem.test.ts` (3 tests: strike resolves, CAP active when flightPlans populated, zero-survivor path)
+
+### Architecture notes
+- `onScenarioEnded` handler in `game.ts` destructures the extended payload: `function onScenarioEnded({ winner, time, alliedPoints: ap, japanesePoints: jp })` — the aliased params avoid shadowing the ref names
+- `MiniLog` merge/sort uses a `sortKey` (total game minutes) on each `LogEntry` so sighting and combat entries interleave chronologically
+
+---
+
 ## Sprint 7 — Make It Playable (completed 2026-04-04)
 
 **Goal:** Hex-click destination, Strike Launch UI, and fog-of-war rendering — the three features needed to play the game meaningfully.

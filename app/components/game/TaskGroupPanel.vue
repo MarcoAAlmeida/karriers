@@ -1,6 +1,7 @@
 <template>
   <div
     v-if="tg"
+    data-testid="tg-panel"
     class="pointer-events-auto absolute left-4 top-16 w-72 rounded-lg bg-gray-950/90 backdrop-blur border border-gray-700 overflow-hidden"
   >
 
@@ -71,6 +72,7 @@
       />
       <UButton
         v-if="hasCarrier"
+        data-testid="air-ops-btn"
         label="Air Ops"
         size="xs"
         color="warning"

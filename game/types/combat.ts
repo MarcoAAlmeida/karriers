@@ -60,6 +60,6 @@ export type CombatEvent =
   | { type: 'strike-resolved'; result: StrikeResult }
   | { type: 'surface-combat'; result: SurfaceCombatResult }
   | { type: 'ship-damaged'; shipId: string; damageType: DamageType; at: GameTime }
-  | { type: 'ship-sunk'; shipId: string; taskGroupId: string; side: Side; at: GameTime }
+  | { type: 'ship-sunk'; shipId: string; taskGroupId: string; side: Side; at: GameTime; hex: HexCoord }
   | { type: 'fire-controlled'; shipId: string; at: GameTime }
   | { type: 'fire-out-of-control'; shipId: string; at: GameTime }

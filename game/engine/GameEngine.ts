@@ -406,12 +406,17 @@ export class GameEngine {
   private emitShipSunk(shipId: string, time: GameTime): void {
     const ship = this.state.ships.get(shipId)
     if (!ship) return
-    // Find which TG this ship belongs to
+    // Find which TG this ship belongs to and capture its position
     let taskGroupId = ''
+    let hex = { q: 0, r: 0 }
     for (const tg of this.state.taskGroups.values()) {
-      if (tg.shipIds.includes(shipId)) { taskGroupId = tg.id; break }
+      if (tg.shipIds.includes(shipId)) {
+        taskGroupId = tg.id
+        hex = { ...tg.position }
+        break
+      }
     }
-    const event = { type: 'ship-sunk' as const, shipId, taskGroupId, side: ship.side, at: time }
+    const event = { type: 'ship-sunk' as const, shipId, taskGroupId, side: ship.side, at: time, hex }
     this.state.pendingCombatEvents.push(event)
     this.events.emit('ShipSunk', { shipId, taskGroupId, side: ship.side, time })
   }

@@ -1,6 +1,7 @@
 import { Application, Container, Graphics, Text } from 'pixi.js'
 import type { Ref } from 'vue'
 import type { TaskGroup, FlightPlan, HexCoord, ContactRecord } from '@game/types'
+import { gameTimeToMinutes } from '@game/types'
 import { hexToPixel, hexCorners, GRID_WIDTH, GRID_HEIGHT, pixelToHex } from '@game/utils/hexMath'
 import { useHexMap } from './useHexMap'
 
@@ -52,13 +53,19 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
   let gridLayer: Graphics
   let fogLayer: Container
   let contactLayer: Container
+  let sunkMarkerLayer: Container
   let unitLayer: Container
   let flightPathLayer: Graphics
+  let strikeDotLayer: Graphics
   let selectionLayer: Graphics
   let annotationLayer: Container
 
   // Unit token map
   const unitTokens = new Map<string, Container>()
+
+  // Pixel origin captured at the moment a flight plan first goes airborne.
+  // Used to anchor arcs and animated dots to the carrier's launch position.
+  const planOriginPx = new Map<string, { x: number; y: number }>()
 
   // Smooth interpolation: pixel positions before and after last step
   const prevPos = new Map<string, { x: number; y: number }>()
@@ -95,16 +102,18 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     world = new Container()
     app.stage.addChild(world)
 
-    terrainLayer  = new Graphics()
-    gridLayer     = new Graphics()
-    fogLayer      = new Container()
-    contactLayer  = new Container()
-    unitLayer     = new Container()
+    terrainLayer   = new Graphics()
+    gridLayer      = new Graphics()
+    fogLayer       = new Container()
+    contactLayer   = new Container()
+    sunkMarkerLayer = new Container()
+    unitLayer      = new Container()
     flightPathLayer = new Graphics()
+    strikeDotLayer  = new Graphics()
     selectionLayer  = new Graphics()
     annotationLayer = new Container()
 
-    world.addChild(terrainLayer, gridLayer, fogLayer, contactLayer, unitLayer, flightPathLayer, selectionLayer, annotationLayer)
+    world.addChild(terrainLayer, gridLayer, fogLayer, contactLayer, sunkMarkerLayer, unitLayer, flightPathLayer, strikeDotLayer, selectionLayer, annotationLayer)
 
     drawTerrain()
     drawGrid()
@@ -118,11 +127,13 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
     // Watch for step changes in forces store
     watch(() => forcesStore.taskGroups, onTaskGroupsChanged, { immediate: true })
-    watch(() => forcesStore.flightPlans, drawFlightPaths, { immediate: true })
+    watch(() => forcesStore.flightPlans, onFlightPlansChanged, { immediate: true })
     watch(() => mapStore.selectedTaskGroupId, drawSelection)
     watch(() => gameStore.phase, onPhaseChanged)
     // Rebuild tokens when contact picture changes (fog-of-war)
     watch(() => intelStore.activeAlliedContacts, () => rebuildUnitTokens(forcesStore.taskGroups))
+    // Redraw sunk markers whenever new ships go down
+    watch(() => intelStore.sunkMarkers, drawSunkMarkers, { immediate: true })
   })
 
   onUnmounted(() => {
@@ -164,6 +175,37 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
           .poly(flat)
           .stroke({ color: COL.gridLine, width: 0.5, alpha: 0.6 })
       }
+    }
+  }
+
+  // ── Sunk markers ─────────────────────────────────────────────────────────
+
+  function drawSunkMarkers(): void {
+    sunkMarkerLayer.removeChildren()
+
+    for (const marker of intelStore.sunkMarkers) {
+      const px = hexToPixel(marker.hex)
+
+      const token = new Container()
+      token.x = px.x
+      token.y = px.y
+
+      // Dark red circle — visually distinct from live unit tokens and contact diamonds
+      const g = new Graphics()
+      g.circle(0, 0, 11)
+        .fill({ color: 0x550000, alpha: 0.85 })
+        .stroke({ color: 0xcc2200, width: 1.5 })
+      token.addChild(g)
+
+      // ✕ glyph
+      const lbl = new Text({
+        text: '✕',
+        style: { fill: 0xff6666, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' },
+      })
+      lbl.anchor.set(0.5, 0.5)
+      token.addChild(lbl)
+
+      sunkMarkerLayer.addChild(token)
     }
   }
 
@@ -325,6 +367,9 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       }
     }
 
+    // Animated strike dots (redrawn every frame for smooth sub-step movement)
+    drawStrikeDots()
+
     // Update selection ring + destination marker for the selected TG
     const selId = mapStore.selectedTaskGroupId
     if (selId) {
@@ -349,46 +394,152 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
   // ── Flight paths ──────────────────────────────────────────────────────────
 
-  function drawFlightPaths(plans: Map<string, FlightPlan>): void {
-    flightPathLayer.clear()
-
+  /** Capture origin pixels for newly airborne plans; keep planOriginPx in sync. */
+  function onFlightPlansChanged(plans: Map<string, FlightPlan>): void {
     for (const plan of plans.values()) {
-      if (plan.status !== 'airborne' && plan.status !== 'inbound') continue
+      if (planOriginPx.has(plan.id)) continue
+      // Only capture on first airborne sighting — before the plan status transitions
+      if (plan.status !== 'airborne') continue
       if (!plan.targetHex) continue
-
-      // Find origin TG position via first squadron's task group
       const sq = forcesStore.squadrons.get(plan.squadronIds[0] ?? '')
       if (!sq) continue
       const tg = forcesStore.taskGroups.get(sq.taskGroupId)
       if (!tg) continue
+      const px = hexToPixel(tg.position)
+      planOriginPx.set(plan.id, { x: px.x, y: px.y })
+    }
+    // Prune stale entries
+    for (const id of planOriginPx.keys()) {
+      if (!plans.has(id)) planOriginPx.delete(id)
+    }
+    drawFlightPaths(plans)
+  }
 
-      const origin = hexToPixel(tg.position)
+  /** Evaluate a quadratic bezier at parameter t (0–1). */
+  function bezierPoint(
+    t: number,
+    p0: { x: number; y: number },
+    cp: { x: number; y: number },
+    p1: { x: number; y: number }
+  ): { x: number; y: number } {
+    const mt = 1 - t
+    return {
+      x: mt * mt * p0.x + 2 * mt * t * cp.x + t * t * p1.x,
+      y: mt * mt * p0.y + 2 * mt * t * cp.y + t * t * p1.y,
+    }
+  }
+
+  function drawFlightPaths(plans: Map<string, FlightPlan>): void {
+    flightPathLayer.clear()
+
+    for (const plan of plans.values()) {
+      if (!plan.targetHex) continue
+
+      const isOutbound = plan.status === 'airborne' || plan.status === 'inbound'
+      const isReturning = plan.status === 'returning'
+      if (!isOutbound && !isReturning) continue
+
+      // Use captured launch origin so the arc doesn't warp as the carrier moves
+      const originPx = planOriginPx.get(plan.id)
+      if (!originPx) continue
+
       const target = hexToPixel(plan.targetHex)
 
-      // Quadratic bezier arc — control point elevated above midpoint
-      const mx = (origin.x + target.x) / 2
-      const my = (origin.y + target.y) / 2 - 60
+      if (isOutbound) {
+        // Outbound arc: origin → target
+        const mx = (originPx.x + target.x) / 2
+        const my = (originPx.y + target.y) / 2 - 60
 
-      flightPathLayer.moveTo(origin.x, origin.y)
-      flightPathLayer.quadraticCurveTo(mx, my, target.x, target.y)
-      flightPathLayer.stroke({ color: COL.flightPath, width: 1.5, alpha: 0.7 })
+        flightPathLayer.moveTo(originPx.x, originPx.y)
+        flightPathLayer.quadraticCurveTo(mx, my, target.x, target.y)
+        flightPathLayer.stroke({ color: COL.flightPath, width: 1.5, alpha: 0.7 })
 
-      // Arrowhead at target
-      const dx = target.x - mx
-      const dy = target.y - my
-      const angle = Math.atan2(dy, dx)
-      const arrowLen = 10
-      flightPathLayer.moveTo(target.x, target.y)
-      flightPathLayer.lineTo(
-        target.x - Math.cos(angle - 0.4) * arrowLen,
-        target.y - Math.sin(angle - 0.4) * arrowLen
-      )
-      flightPathLayer.moveTo(target.x, target.y)
-      flightPathLayer.lineTo(
-        target.x - Math.cos(angle + 0.4) * arrowLen,
-        target.y - Math.sin(angle + 0.4) * arrowLen
-      )
-      flightPathLayer.stroke({ color: COL.flightPath, width: 1.5, alpha: 0.7 })
+        // Arrowhead at target
+        const angle = Math.atan2(target.y - my, target.x - mx)
+        const arrowLen = 10
+        flightPathLayer.moveTo(target.x, target.y)
+        flightPathLayer.lineTo(target.x - Math.cos(angle - 0.4) * arrowLen, target.y - Math.sin(angle - 0.4) * arrowLen)
+        flightPathLayer.moveTo(target.x, target.y)
+        flightPathLayer.lineTo(target.x - Math.cos(angle + 0.4) * arrowLen, target.y - Math.sin(angle + 0.4) * arrowLen)
+        flightPathLayer.stroke({ color: COL.flightPath, width: 1.5, alpha: 0.7 })
+      } else {
+        // Return arc: target → current carrier position (carrier may have moved)
+        const sq = forcesStore.squadrons.get(plan.squadronIds[0] ?? '')
+        if (!sq) continue
+        const tg = forcesStore.taskGroups.get(sq.taskGroupId)
+        if (!tg) continue
+        const carrierPx = hexToPixel(tg.position)
+
+        const mx = (target.x + carrierPx.x) / 2
+        const my = (target.y + carrierPx.y) / 2 - 60
+
+        flightPathLayer.moveTo(target.x, target.y)
+        flightPathLayer.quadraticCurveTo(mx, my, carrierPx.x, carrierPx.y)
+        flightPathLayer.stroke({ color: COL.flightPath, width: 1, alpha: 0.4 })
+
+        // Arrowhead at carrier
+        const angle = Math.atan2(carrierPx.y - my, carrierPx.x - mx)
+        const arrowLen = 8
+        flightPathLayer.moveTo(carrierPx.x, carrierPx.y)
+        flightPathLayer.lineTo(carrierPx.x - Math.cos(angle - 0.4) * arrowLen, carrierPx.y - Math.sin(angle - 0.4) * arrowLen)
+        flightPathLayer.moveTo(carrierPx.x, carrierPx.y)
+        flightPathLayer.lineTo(carrierPx.x - Math.cos(angle + 0.4) * arrowLen, carrierPx.y - Math.sin(angle + 0.4) * arrowLen)
+        flightPathLayer.stroke({ color: COL.flightPath, width: 1, alpha: 0.4 })
+      }
+    }
+  }
+
+  // ── Animated strike dots ──────────────────────────────────────────────────
+
+  function drawStrikeDots(): void {
+    strikeDotLayer.clear()
+
+    // Interpolated game-time in minutes, including sub-step fraction for smoothness
+    const nowMin = gameTimeToMinutes(gameStore.currentTime) + gameStore.stepFraction * 30
+
+    for (const plan of forcesStore.flightPlans.values()) {
+      if (!plan.targetHex) continue
+      const originPx = planOriginPx.get(plan.id)
+      if (!originPx) continue
+
+      const target = hexToPixel(plan.targetHex)
+      let dotPos: { x: number; y: number } | null = null
+
+      if ((plan.status === 'airborne' || plan.status === 'inbound') && plan.eta) {
+        // Outbound: dot travels origin → target
+        const launchMin = gameTimeToMinutes(plan.launchTime)
+        const etaMin = gameTimeToMinutes(plan.eta)
+        const total = etaMin - launchMin
+        if (total > 0) {
+          const t = Math.min(1, Math.max(0, (nowMin - launchMin) / total))
+          const cp = { x: (originPx.x + target.x) / 2, y: (originPx.y + target.y) / 2 - 60 }
+          dotPos = bezierPoint(t, originPx, cp, target)
+        }
+      } else if (plan.status === 'returning' && plan.eta && plan.returnEta) {
+        // Returning: dot travels target → current carrier position
+        const sq = forcesStore.squadrons.get(plan.squadronIds[0] ?? '')
+        if (!sq) continue
+        const tg = forcesStore.taskGroups.get(sq.taskGroupId)
+        if (!tg) continue
+        const carrierPx = hexToPixel(tg.position)
+
+        const etaMin = gameTimeToMinutes(plan.eta)
+        const returnMin = gameTimeToMinutes(plan.returnEta)
+        const total = returnMin - etaMin
+        if (total > 0) {
+          const t = Math.min(1, Math.max(0, (nowMin - etaMin) / total))
+          const cp = { x: (target.x + carrierPx.x) / 2, y: (target.y + carrierPx.y) / 2 - 60 }
+          dotPos = bezierPoint(t, target, cp, carrierPx)
+        }
+      }
+
+      if (!dotPos) continue
+
+      const isOutbound = plan.status === 'airborne' || plan.status === 'inbound'
+      strikeDotLayer
+        .circle(dotPos.x, dotPos.y, 5)
+        .fill({ color: isOutbound ? COL.flightPath : 0xaaaaaa, alpha: 0.95 })
+        .stroke({ color: 0xffffff, width: 1, alpha: 0.6 })
     }
   }
 
@@ -413,8 +564,11 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       prevPos.clear()
       currPos.clear()
       flightPathLayer.clear()
+      strikeDotLayer.clear()
+      planOriginPx.clear()
       selectionLayer.clear()
       contactLayer.removeChildren()
+      sunkMarkerLayer.removeChildren()
     }
   }
 

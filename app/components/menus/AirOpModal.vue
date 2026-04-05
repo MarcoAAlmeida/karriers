@@ -28,7 +28,7 @@
 
           <!-- Airborne tab -->
           <template #airborne>
-            <div class="mt-3 space-y-1">
+            <div data-testid="air-ops-airborne-content" class="mt-3 space-y-1">
               <div v-if="!flightPlans.length" class="text-sm text-gray-500 text-center py-4">
                 No active missions.
               </div>
@@ -80,6 +80,7 @@
 
           <!-- Launch Strike tab -->
           <template #strike>
+            <div data-testid="air-ops-tab-strike-content">
             <div class="mt-3 space-y-4">
 
               <!-- Squadron selection -->
@@ -91,6 +92,7 @@
                 <div
                   v-for="sq in availableForStrike"
                   :key="sq.id"
+                  data-testid="strike-squadron-row"
                   class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
                   :class="strikeSelected.has(sq.id) ? 'bg-blue-900/40 ring-1 ring-blue-500' : 'bg-gray-900 hover:bg-gray-800'"
                   @click="toggleStrikeSquadron(sq.id)"
@@ -115,6 +117,7 @@
                 <div v-if="contactOptions.length">
                   <select
                     v-model="strikeTargetContactId"
+                    data-testid="strike-target-select"
                     class="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">— Select contact —</option>
@@ -149,12 +152,14 @@
 
               <!-- Launch button -->
               <UButton
+                data-testid="launch-strike-btn"
                 label="Launch Strike"
                 color="error"
                 block
                 :disabled="!canLaunchStrike"
                 @click="launchStrike"
               />
+            </div>
             </div>
           </template>
 

@@ -1,5 +1,5 @@
 <template>
-  <div ref="containerRef" class="w-full h-full overflow-hidden" />
+  <div ref="containerRef" data-testid="game-canvas" class="w-full h-full overflow-hidden" />
 </template>
 
 <script setup lang="ts">

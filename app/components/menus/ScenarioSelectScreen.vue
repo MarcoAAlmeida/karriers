@@ -12,6 +12,7 @@
       <div
         v-for="meta in SCENARIO_MANIFEST"
         :key="meta.id"
+        :data-testid="`scenario-card-${meta.id}`"
         class="group rounded-xl border border-gray-700 bg-gray-900 hover:border-amber-500 hover:bg-gray-800 transition-all cursor-pointer p-5 flex flex-col gap-3"
         :class="{ 'opacity-50 cursor-not-allowed hover:border-gray-700 hover:bg-gray-900': !isAvailable(meta.id) }"
         @click="selectScenario(meta.id)"
@@ -40,9 +41,10 @@
             variant="soft"
             block
             trailing-icon="i-heroicons-play"
+            :data-testid="`play-btn-${meta.id}`"
             @click.stop="selectScenario(meta.id)"
           />
-          <p v-else class="text-xs text-gray-600 text-center">Coming soon</p>
+          <p v-else :data-testid="`coming-soon-${meta.id}`" class="text-xs text-gray-600 text-center">Coming soon</p>
         </div>
       </div>
     </div>
