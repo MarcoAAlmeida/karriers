@@ -104,6 +104,8 @@ const showOrderModal = ref(false)
 const showAirOpsModal = ref(false)
 const showCommandPalette = ref(false)
 
+useModalPause(showCommandPalette)
+
 // ── Game event toasts ─────────────────────────────────────────────────────
 useGameEvents()
 

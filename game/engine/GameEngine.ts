@@ -287,12 +287,21 @@ export class GameEngine {
     for (const tg of this.state.taskGroups.values()) {
       taskGroupPositions.set(tg.id, tg.position)
     }
-    this.airOpsSystem.processStep(
+    const newPlans = this.airOpsSystem.processStep(
       this.state.squadrons,
       this.state.flightPlans,
       taskGroupPositions,
       currentTime
     )
+    for (const plan of newPlans) {
+      if (plan.mission === 'strike') {
+        this.state.pendingCombatEvents.push({
+          type: 'strike-launched',
+          flightPlanId: plan.id,
+          at: currentTime
+        })
+      }
+    }
 
     // 5. Air combat — resolve strikes that have arrived
     const strikeResults = this.combatSystem.processStep(

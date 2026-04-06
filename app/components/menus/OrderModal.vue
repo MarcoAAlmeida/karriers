@@ -52,6 +52,8 @@ const props = defineProps<{ taskGroupId: string | null }>()
 const gameStore = useGameStore()
 const forcesStore = useForcesStore()
 
+useModalPause(open)
+
 const tg = computed(() => props.taskGroupId ? forcesStore.taskGroups.get(props.taskGroupId) ?? null : null)
 
 const ORDERS: { value: TaskGroupOrder; label: string; icon: string }[] = [

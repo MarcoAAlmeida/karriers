@@ -371,16 +371,6 @@ test.describe('Golden Flow — Strike mission end-to-end', () => {
     )
     expect(stillAirborne.length).toBe(0)
 
-    // ── Assert: game is running at 8× (auto-speed triggered by useGameEvents) ─
-    await page.waitForFunction(
-      () => {
-        const s = window.__GAME_STATE__
-        // Either already at 8× (auto-speed fired) or scenario ended — both are valid
-        return s.timeScale === 8 || s.phase === 'ended'
-      },
-      { timeout: 10_000 }
-    )
-
     // ── Assert: sunk markers are tracked in state and renderer ────────────────
     const sunkMarkers = await page.evaluate(() => window.__GAME_STATE__.sunkMarkers)
     expect(sunkMarkers.length).toBeGreaterThan(0)

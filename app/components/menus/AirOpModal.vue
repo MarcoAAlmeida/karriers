@@ -191,6 +191,8 @@ const gameStore = useGameStore()
 const forcesStore = useForcesStore()
 const intelStore = useIntelligenceStore()
 
+useModalPause(open)
+
 const tabs = [
   { label: 'Deck Status', slot: 'deck' as const },
   { label: 'Airborne',    slot: 'airborne' as const },
@@ -339,8 +341,7 @@ function launchStrike(): void {
     squadronIds: [...strikeSelected.value],
     targetHex: strikeTargetHex.value,
   })
-  // Close modal and resume simulation so the order is processed immediately
+  // Close modal — useModalPause resumes the simulation automatically
   open.value = false
-  if (gameStore.isPaused) gameStore.togglePause()
 }
 </script>

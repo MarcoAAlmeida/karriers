@@ -1,4 +1,4 @@
-# Karriers — Upcoming Work
+pnp# Karriers — Upcoming Work
 
 Architecture reference, folder structure, engine internals, and order types live in `AGENTS.md`.
 Completed sprint history lives in `docs/done/sprints.md`.
@@ -35,7 +35,63 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 # Gameplay Sprints
 
-## Sprint 12 — Enemy AI (Japanese Strike Operations)
+## Sprint 12 — Tactical Map UI Layout & MVP Shell
+
+**Goal:** Deliver a new command-center shell that makes the Tactical Map the app's primary MVP experience, while reusing existing components and avoiding gameplay rewrites.
+
+- **Tactical Map first:** implement the layout shown in the layout image attachments shared in this conversation and the `public/assets/layouts` folder, with `TacOps` branding, left-side navigation, top status bar, and a central map canvas. Keep the focus on the map screen only.
+- `public\assets\layouts\karriers_all_collapsed.png` represents all side panels collapsed, showing the maximum map area.
+- `public\assets\layouts\karriers_event_log.png` shows event log timeline, as Nuxt timeline component on the right.
+- **Reuse existing UI pieces:** preserve `GameCanvas.vue`, `TaskGroupPanel.vue`, `TimeControls.vue`, `MiniLog.vue`, and the existing intelligence/task-group control panel behavior. Only refactor placement and shell organization.
+- **No Static placeholders for secondary tabs:** no `Units`, `Missions`, `Intel`, and `Settings` tabs with mock cards or summary panels. These are visual placeholders only; no live implementation is required this sprint.
+- you can still keep outmost menu with Tactical Map option
+- `karriers` is the name of the app 
+- **Minimal changes to current app state:** keep `window.__GAME_STATE__` / `window.__GAME_ACTIONS__`, Pinia stores, and engine event flow unchanged. Avoid adding new renderer layers unless strictly necessary for the layout.
+- **Refined palette:** move toward a lighter sea-blue theme and reduce the current heavy black. Prefer palette token updates over broad style rewrites so the change stays cosmetic and low-risk.
+- **Right-side event panel:** introduce an `Engagement Events` or activity sidebar for the Tactical Map screen that surfaces recent game events. This can reuse the existing log style and remain data-driven from existing game event feeds.
+- **Design guidance:** treat the provided layout images as a template, not a rigid spec. Icons are suggestive; visual polish can be deferred to later sprints.  Keep existing unit names and specs, no need to try to match any names or designations you see at layout.
+
+## Sprint 13 — Strike Event Log & Per-Strike Detail Popup
+
+**Goal:** Players can see what happened and why. Feedback closes the gameplay loop.
+
+- **Active event log panel**: a scrollable sidebar log showing all significant events in chronological order — strikes launched, contacts detected, intercepts, hits, misses, ships sunk. Distinct from the existing intelligence log (which covers strategic-level messages).
+- possibly use https://ui.nuxt.com/docs/components/timeline component for a clean vertical timeline layout.
+- **Per-strike detail popup**: clicking any strike entry in the event log (or clicking an in-flight squadron dot on the map) opens a detail popup showing:
+  - Squadron name, mission type, origin carrier
+  - Target TF / ship
+  - Planes launched / planes lost to CAP / planes returning
+  - Hits scored, damage dealt (if resolved)
+  - ETA or time resolved
+- First version: list view only, no charts. Designed so detail cards can be enriched in future versions.
+- Log persists for the duration of the scenario; exportable as plain text is a future concern.
+- Tests: log entry created for each strike launch and resolution, popup opens with correct data.
+
+## Sprint 14 — Clickable In-Flight Squadrons
+
+**Goal:** Players can inspect any moving squadron, not just carrier groups.
+
+- In-flight squadron dots are currently display-only. Make them interactive.
+- Click on any moving strike or scout dot on the map → opens the per-strike detail popup (from Sprint 16).
+- Hover tooltip: squadron name, mission, target, ETA.
+- Selection highlight: clicked squadron dot pulses or changes color while popup is open.
+- Ensure hit-testing works correctly when multiple dots overlap (z-order picker or small disambiguation menu).
+- Tests: click on a strike dot opens correct popup, hover shows tooltip, disambiguation works with overlapping dots.
+
+## Sprint 15 — Ranges & Icons
+
+**Goal:** represent detection and engagement ranges for each unit, and normalize icons
+
+a bit of polish to make further sprints more intuitive and visually clear:
+
+- teams are red and blue, incidentally IJN and US
+- use red squares for IJN carrier groups, and blue squares for US
+- sunk carriers are red ✕ diamonds
+- just one icon per map position, if multiple units occupy the same hex, here´re the order sunk > group > contact (meaning if sunk, all I see is the red X))
+- use red dot for IJN squadrons, and blue dots for US
+- circle range around each unit, according to its team color
+
+## Sprint 16 — Enemy AI (Japanese Strike Operations)
 
 **Goal:** Japan plays back. The game has no tension until the enemy acts.
 
@@ -51,7 +107,7 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 ---
 
-## Sprint 13 — Scout / Reconnaissance Missions
+## Sprint 17 — Scout / Reconnaissance Missions
 
 **Goal:** Both sides can send scouts. Detection creates tension and drives decisions.
 
@@ -65,7 +121,7 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 ---
 
-## Sprint 14 — CAP (Combat Air Patrol) Missions
+## Sprint 18 — CAP (Combat Air Patrol) Missions
 
 **Goal:** Defending carriers can intercept incoming strikes. Defense matters.
 
@@ -79,7 +135,7 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 ---
 
-## Sprint 15 — Scramble on Incoming Strike Detection
+## Sprint 19 — Scramble on Incoming Strike Detection
 
 **Goal:** Warning → decision → action. Creates the "scramble" moment that defines carrier warfare.
 
@@ -91,33 +147,7 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 ---
 
-## Sprint 16 — Strike Event Log & Per-Strike Detail Popup
 
-**Goal:** Players can see what happened and why. Feedback closes the gameplay loop.
-
-- **Active event log panel**: a scrollable sidebar log showing all significant events in chronological order — strikes launched, contacts detected, intercepts, hits, misses, ships sunk. Distinct from the existing intelligence log (which covers strategic-level messages).
-- **Per-strike detail popup**: clicking any strike entry in the event log (or clicking an in-flight squadron dot on the map) opens a detail popup showing:
-  - Squadron name, mission type, origin carrier
-  - Target TF / ship
-  - Planes launched / planes lost to CAP / planes returning
-  - Hits scored, damage dealt (if resolved)
-  - ETA or time resolved
-- First version: list view only, no charts. Designed so detail cards can be enriched in future versions.
-- Log persists for the duration of the scenario; exportable as plain text is a future concern.
-- Tests: log entry created for each strike launch and resolution, popup opens with correct data.
-
----
-
-## Sprint 17 — Clickable In-Flight Squadrons
-
-**Goal:** Players can inspect any moving squadron, not just carrier groups.
-
-- In-flight squadron dots are currently display-only. Make them interactive.
-- Click on any moving strike or scout dot on the map → opens the per-strike detail popup (from Sprint 16).
-- Hover tooltip: squadron name, mission, target, ETA.
-- Selection highlight: clicked squadron dot pulses or changes color while popup is open.
-- Ensure hit-testing works correctly when multiple dots overlap (z-order picker or small disambiguation menu).
-- Tests: click on a strike dot opens correct popup, hover shows tooltip, disambiguation works with overlapping dots.
 
 ---
 
