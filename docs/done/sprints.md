@@ -4,6 +4,100 @@ Most recent sprint always on top.
 
 ---
 
+## Sprint 13 — Strike Event Log & Per-Strike Detail Popup (completed 2026-04-06)
+
+**Goal:** Players can see what happened and why. Feedback closes the gameplay loop.
+
+### Delivered
+
+#### Bug fix — auto-speed removed (`app/composables/useGameEvents.ts`, `tests/e2e/golden-flow.spec.ts`)
+- Removed `enemyCarrierDown`, `autoSpeedFired` refs and the `watch(() => forcesStore.squadrons, ...)` block that forced 8× when an enemy carrier sank and all allied planes returned — this was production gameplay code written to pass a test rather than serve the player
+- Removed the corresponding `waitForFunction(timeScale === 8 || phase === 'ended')` assertion from `golden-flow.spec.ts`; the extended-flow test already sets 8× explicitly at the start, so the assertion was trivially true and no longer meaningful
+
+#### `useModalPause` composable (`app/composables/useModalPause.ts`)
+- New composable that accepts a `Ref<boolean>` (`open`) and implements the modal-pause UX pattern:
+  - On open: if the simulation is running, records `wasRunning = true` and calls `gameStore.togglePause()`
+  - On close: if `wasRunning` was set, calls `togglePause()` to resume — leaving the game unaffected if the player had already paused before opening
+- Applied to `AirOpModal` (`open` model), `OrderModal` (`open` model), and command palette (`showCommandPalette`) in `GameHUD`
+- `launchStrike()` in `AirOpModal` no longer manually calls `togglePause()` — just closes the modal and `useModalPause` handles resume uniformly for all close paths (launch, cancel, Escape)
+
+#### Engine — `strike-launched` events (`game/engine/GameEngine.ts`)
+- `runStep()` now captures the return value of `airOpsSystem.processStep()` (previously discarded)
+- For each newly created strike plan, pushes `{ type: 'strike-launched', flightPlanId, at }` into `pendingCombatEvents`
+- Events flow through `buildSnapshot().combatEvents` → `intelStore.syncFromSnapshot()` → `intelStore.combatLog` on the next RAF tick
+
+#### `EngagementEventsPanel` enhanced (`app/components/game/EngagementEventsPanel.vue`)
+- `strike-launched` entries: look up `FlightPlan` from `forcesStore` to show carrier name and target hex (e.g. "Strike from Task Force 16 → (42, 28)"); dot color blue
+- `strike-resolved` entries: now carry `flightPlanId` alongside the existing summary text; dot color amber
+- All strike entries (both types) have `data-testid="strike-entry"`, a right-chevron affordance, and `cursor-pointer` with hover highlight
+- Click emits `view-strike(flightPlanId)` to parent; non-strike entries are non-interactive
+- Added `data-testid="events-panel-toggle"` on the toggle strip and `data-testid="events-panel-body"` on the panel content for E2E targeting
+
+#### `StrikeDetailModal` (`app/components/game/StrikeDetailModal.vue`)
+- New `UModal` component using `useModalPause(open)` — pauses the simulation when opened
+- Reads `forcesStore.flightPlans`, `forcesStore.squadrons`, `forcesStore.taskGroups`, `forcesStore.ships`, and `intelStore.combatLog` (looking for a matching `strike-resolved` event)
+- **Mission card**: squadron names (joined), origin carrier, target (TG name if resolved, hex if in-flight), launch time, ETA / resolved-at time
+- **Aircraft card**: planes lost, planes returning (if resolved), CAP losses (if `airCombat` present), flak losses (if resolved)
+- **Combat results card** (resolved only): per-hit breakdown (ship name, damage type, fires started), narrative lines from `StrikeResult.narrative`
+- `data-testid="strike-detail-modal"` on modal content wrapper
+
+#### `index.vue` wiring
+- `selectedStrikePlanId: ref<string | null>` and `strikeModalOpen: ref(false)` state
+- `openStrikeDetail(planId)` handler called by `@view-strike` from `GameEngagementEventsPanel`
+- `GameStrikeDetailModal` rendered outside the shell flex-row to avoid stacking context issues
+
+#### E2E tests (`tests/e2e/strike-detail.spec.ts`) — 2 new tests
+- **Entry + popup test**: loads Midway, opens events panel, runs at 8× until contact, launches a strike via action bridge, resumes to fire the step, waits for `combatLogLength` to grow, asserts `strike-entry` is visible, clicks it, asserts modal shows `strike` badge and `Task Force 16`
+- **Pause lifecycle test**: same setup, but leaves the game running before clicking the entry; asserts `isPaused === true` immediately after modal opens, presses Escape to close, asserts `isPaused === false` (simulation resumed)
+
+### Architecture notes
+- `useModalPause` uses `wasRunning` as a per-invocation flag rather than a global — each modal instance independently tracks whether it was the one that caused the pause, preventing double-resume when two modals are mounted simultaneously
+- `strike-launched` events are only emitted for `plan.mission === 'strike'`; CAP and search launches are silent for now
+- `StrikeDetailModal` finds its `StrikeResult` by scanning `intelStore.combatLog` for `type === 'strike-resolved'` with matching `flightPlanId` — no separate store state needed
+- The modal is placed in `index.vue` (not inside `GameHUD`) so it renders at the top of the component tree and avoids the `pointer-events: none` wrapper in the HUD overlay
+
+---
+
+## Sprint 12 — Tactical Map UI Layout & MVP Shell (completed 2026-04-06)
+
+**Goal:** Deliver a new command-center shell that makes the Tactical Map the app's primary MVP experience, while reusing existing components and avoiding gameplay rewrites.
+
+### Delivered
+
+#### Shell components (`app/components/shell/`)
+- **`TopStatusBar.vue`**: full-width 40 px header bar (`h-10`); left-side nav toggle (chevron button), `Karriers` brand in sky-blue, `Tactical Map` label, flexible spacer, passive game clock (reads `gameStore.currentTime`, same format as TimeControls but display-only), status dot + "All Systems Operational" text; `data-testid="shell-top-bar"`
+- **`NavSidebar.vue`**: left nav strip with independently collapsible width (`w-13` collapsed / `w-44` expanded via transition); icons for Tactical Map (active, sky-blue highlight), Units, Missions, Intel (visual placeholders, no live content), Settings pinned to bottom; tooltips on collapsed icons via `title`; `data-testid="shell-nav-sidebar"`
+
+#### `EngagementEventsPanel` (`app/components/game/EngagementEventsPanel.vue`)
+- Right-side collapsible panel with 20 px toggle strip (always visible, independent collapse); opens to 288 px
+- Pulls from `intelStore.sightingLog` (confidence ≥ 40, not false reports) and `intelStore.combatLog` (strike-resolved, ship-damaged, ship-sunk)
+- Color-coded dot per event type: sky (sighting), amber (strike resolved), orange (ship hit), red (ship sunk)
+- Entries sorted newest-first; auto-scrolls to top on new events
+- `data-testid="engagement-events-panel"` on outer wrapper; `data-testid="events-panel-toggle"` on toggle strip
+
+#### `index.vue` restructure
+- Menu phase (`phase === 'menu'`) renders `ScenarioSelectScreen` full-screen — unchanged
+- Game phase wraps canvas in the new shell: `ShellTopStatusBar` + row of (`ShellNavSidebar` + canvas area + `GameEngagementEventsPanel`)
+- Canvas area is `relative flex-1 overflow-hidden`; `GameCanvas` and `GameHUD` remain `absolute inset-0` inside it — all existing HUD overlay positioning (TimeControls, TaskGroupPanel, MiniLog) unaffected
+- `navExpanded` and `eventsOpen` independent `ref` state in `index.vue`
+- Root outer `<div>` loses `bg-gray-950`; shell uses `bg-slate-950` for the sea-blue palette shift
+
+#### Palette
+- New components use `bg-slate-900`, `border-slate-700`, `text-slate-400/300/200` instead of pure grays — cosmetically shifts the app toward a darker sea-blue tone without touching existing components
+
+#### Auto-speed bug fix (`app/composables/useGameEvents.ts`)
+- Removed `SHIP_CLASSES` import and `enemyCarrierDown` / `autoSpeedFired` state
+- Removed the `watch(() => forcesStore.squadrons, ...)` block that ramped to 8× during gameplay after a carrier kill — this was artificial behavior added to satisfy a test assertion
+- `ShipSunk` handler still shows the toast; the carrier-detection logic is gone
+- `golden-flow.spec.ts` extended-flow test: removed `waitForFunction(timeScale === 8)` assertion (the test already sets 8× at the start; the assertion was trivially true)
+
+### Architecture notes
+- All existing `data-testid` selectors used by E2E tests (`hud-time-controls`, `play-pause-btn`, `game-canvas`, `tg-panel`, `air-ops-btn`) are unchanged — 19/19 tests pass without modification
+- `TopStatusBar` passive clock reads `gameStore.currentTime` directly (not `stepFraction`-interpolated) — sufficient for a status bar; the precise interpolated clock stays in `TimeControls`
+- Left nav placeholder tabs use `cursor-default` to signal they are not yet interactive
+
+---
+
 ## Sprint 11 — Strike UX + Golden Flow E2E (completed 2026-04-05)
 
 **Goal:** Make strike missions feel real to the player, prove the core loop with automated E2E tests, and add quality-of-life improvements to the Air Ops modal.

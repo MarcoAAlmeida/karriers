@@ -56,12 +56,15 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
   let sunkMarkerLayer: Container
   let unitLayer: Container
   let flightPathLayer: Graphics
-  let strikeDotLayer: Graphics
+  let strikeDotLayer: Container
   let selectionLayer: Graphics
   let annotationLayer: Container
 
   // Unit token map
   const unitTokens = new Map<string, Container>()
+
+  // Strike dot token map (one Container per active FlightPlan)
+  const strikeDotTokens = new Map<string, Container>()
 
   // Pixel origin captured at the moment a flight plan first goes airborne.
   // Used to anchor arcs and animated dots to the carrier's launch position.
@@ -80,6 +83,9 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
   let dragStartY = 0
   let dragVpStartX = 0
   let dragVpStartY = 0
+  // Set to true when Pixi fires pointertap on a dot; checked in DOM pointerup
+  // to avoid clearing disambiguation that was just set by the dot tap
+  let dotTappedThisFrame = false
 
   // ── Init ────────────────────────────────────────────────────────────────
 
@@ -109,7 +115,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     sunkMarkerLayer = new Container()
     unitLayer      = new Container()
     flightPathLayer = new Graphics()
-    strikeDotLayer  = new Graphics()
+    strikeDotLayer  = new Container()
     selectionLayer  = new Graphics()
     annotationLayer = new Container()
 
@@ -367,18 +373,19 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       }
     }
 
-    // Animated strike dots (redrawn every frame for smooth sub-step movement)
-    drawStrikeDots()
+    // Animated strike dots — position + interactive tokens
+    updateStrikeDots()
 
-    // Update selection ring + destination marker for the selected TG
+    // ── Selection rings ───────────────────────────────────────────────────
+    selectionLayer.clear()
+
+    // Task group selection ring + destination marker
     const selId = mapStore.selectedTaskGroupId
     if (selId) {
       const token = unitTokens.get(selId)
       if (token) {
-        selectionLayer.clear()
         selectionLayer.circle(token.x, token.y, 18).stroke({ color: COL.selection, width: 2, alpha: 0.9 })
 
-        // Draw destination × marker
         const tg = forcesStore.taskGroups.get(selId)
         if (tg?.destination) {
           const dest = hexToPixel(tg.destination)
@@ -388,6 +395,18 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
             .moveTo(dest.x + r, dest.y - r).lineTo(dest.x - r, dest.y + r)
             .stroke({ color: COL.selection, width: 2, alpha: 0.75 })
         }
+      }
+    }
+
+    // Flight plan selection ring (pulsing white ring around the selected dot)
+    const selPlanId = mapStore.selectedFlightPlanId
+    if (selPlanId) {
+      const dotToken = strikeDotTokens.get(selPlanId)
+      if (dotToken) {
+        const pulse = 1 + 0.15 * Math.sin(Date.now() * 0.006)
+        selectionLayer
+          .circle(dotToken.x, dotToken.y, 10 * pulse)
+          .stroke({ color: 0xffffff, width: 2, alpha: 0.9 })
       }
     }
   }
@@ -491,11 +510,64 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
   // ── Animated strike dots ──────────────────────────────────────────────────
 
-  function drawStrikeDots(): void {
-    strikeDotLayer.clear()
+  /** Build an interactive Container for a single in-flight squadron dot. */
+  function buildStrikeDotToken(planId: string): Container {
+    const container = new Container()
+    container.label = planId
 
-    // Interpolated game-time in minutes, including sub-step fraction for smoothness
+    // Visual dot (index 0) — redrawn each tick as status/selection changes
+    const g = new Graphics()
+    container.addChild(g)
+
+    // Transparent hit area larger than the visual (easier to click)
+    const hit = new Graphics()
+    hit.circle(0, 0, 12).fill({ color: 0x000000, alpha: 0.001 })
+    container.addChild(hit)
+
+    container.eventMode = 'static'
+    container.cursor = 'pointer'
+
+    container.on('pointertap', (e) => {
+      e.stopPropagation()
+      dotTappedThisFrame = true
+      const screenX = container.x * vpZoom + vpX
+      const screenY = container.y * vpZoom + vpY
+
+      // Find all dot tokens close enough to count as overlapping
+      const OVERLAP_R = 15  // screen-space pixels
+      const overlapping: string[] = []
+      for (const [otherId, other] of strikeDotTokens) {
+        const ox = other.x * vpZoom + vpX
+        const oy = other.y * vpZoom + vpY
+        if (Math.hypot(ox - screenX, oy - screenY) < OVERLAP_R * 2) {
+          overlapping.push(otherId)
+        }
+      }
+
+      if (overlapping.length > 1) {
+        mapStore.setDisambiguation(overlapping, { x: screenX, y: screenY })
+      } else {
+        mapStore.selectFlightPlan(planId)
+      }
+    })
+
+    container.on('pointerover', (e) => {
+      mapStore.hoverFlightPlan(planId, { x: e.global.x, y: e.global.y })
+    })
+
+    container.on('pointerout', () => {
+      if (mapStore.hoveredFlightPlanId === planId) {
+        mapStore.hoverFlightPlan(null, null)
+      }
+    })
+
+    return container
+  }
+
+  /** Update dot Container positions and visuals every tick; create/remove as plans change. */
+  function updateStrikeDots(): void {
     const nowMin = gameTimeToMinutes(gameStore.currentTime) + gameStore.stepFraction * 30
+    const activePlanIds = new Set<string>()
 
     for (const plan of forcesStore.flightPlans.values()) {
       if (!plan.targetHex) continue
@@ -506,7 +578,6 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       let dotPos: { x: number; y: number } | null = null
 
       if ((plan.status === 'airborne' || plan.status === 'inbound') && plan.eta) {
-        // Outbound: dot travels origin → target
         const launchMin = gameTimeToMinutes(plan.launchTime)
         const etaMin = gameTimeToMinutes(plan.eta)
         const total = etaMin - launchMin
@@ -516,7 +587,6 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
           dotPos = bezierPoint(t, originPx, cp, target)
         }
       } else if (plan.status === 'returning' && plan.eta && plan.returnEta) {
-        // Returning: dot travels target → current carrier position
         const sq = forcesStore.squadrons.get(plan.squadronIds[0] ?? '')
         if (!sq) continue
         const tg = forcesStore.taskGroups.get(sq.taskGroupId)
@@ -534,25 +604,48 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       }
 
       if (!dotPos) continue
+      activePlanIds.add(plan.id)
 
+      // Create token if not yet present
+      let dotToken = strikeDotTokens.get(plan.id)
+      if (!dotToken) {
+        dotToken = buildStrikeDotToken(plan.id)
+        strikeDotLayer.addChild(dotToken)
+        strikeDotTokens.set(plan.id, dotToken)
+      }
+
+      // Update position
+      dotToken.x = dotPos.x
+      dotToken.y = dotPos.y
+
+      // Redraw visual dot (index 0) to reflect current status / selection
       const isOutbound = plan.status === 'airborne' || plan.status === 'inbound'
-      strikeDotLayer
-        .circle(dotPos.x, dotPos.y, 5)
-        .fill({ color: isOutbound ? COL.flightPath : 0xaaaaaa, alpha: 0.95 })
-        .stroke({ color: 0xffffff, width: 1, alpha: 0.6 })
+      const isSelected = mapStore.selectedFlightPlanId === plan.id
+      const g = dotToken.getChildAt(0) as Graphics
+      g.clear()
+      if (isSelected) {
+        g.circle(0, 0, 7).fill({ color: 0xffffff, alpha: 1 }).stroke({ color: COL.selection, width: 2, alpha: 1 })
+      } else {
+        const fillColor = isOutbound ? COL.flightPath : 0xaaaaaa
+        g.circle(0, 0, 5).fill({ color: fillColor, alpha: 0.95 }).stroke({ color: 0xffffff, width: 1, alpha: 0.6 })
+      }
+    }
+
+    // Remove tokens for plans that are no longer active
+    for (const [id, token] of strikeDotTokens) {
+      if (!activePlanIds.has(id)) {
+        strikeDotLayer.removeChild(token)
+        strikeDotTokens.delete(id)
+        // Clear selection if it was this plan
+        if (mapStore.selectedFlightPlanId === id) mapStore.selectFlightPlan(null)
+      }
     }
   }
 
   // ── Selection ring ────────────────────────────────────────────────────────
-
-  function drawSelection(): void {
-    selectionLayer.clear()
-    const selId = mapStore.selectedTaskGroupId
-    if (!selId) return
-    const token = unitTokens.get(selId)
-    if (!token) return
-    selectionLayer.circle(token.x, token.y, 18).stroke({ color: COL.selection, width: 2, alpha: 0.9 })
-  }
+  // NOTE: actual drawing happens in onTick() so both TG and dot rings are
+  // kept in sync on the same selectionLayer clear cycle.
+  function drawSelection(): void { /* handled by onTick */ }
 
   // ── Phase change ──────────────────────────────────────────────────────────
 
@@ -564,11 +657,15 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       prevPos.clear()
       currPos.clear()
       flightPathLayer.clear()
-      strikeDotLayer.clear()
+      strikeDotLayer.removeChildren()
+      strikeDotTokens.clear()
       planOriginPx.clear()
       selectionLayer.clear()
       contactLayer.removeChildren()
       sunkMarkerLayer.removeChildren()
+      mapStore.selectFlightPlan(null)
+      mapStore.hoverFlightPlan(null, null)
+      mapStore.clearDisambiguation()
     }
   }
 
@@ -624,7 +721,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       if (e.button === 0) {
         const dist = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY)
         isDragging = false
-        // If barely moved, treat as click (deselect)
+        // If barely moved, treat as click
         if (dist < 5) {
           const rect = canvas.getBoundingClientRect()
           const wx = (e.clientX - rect.left - vpX) / vpZoom
@@ -632,6 +729,10 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
           // We rely on Pixi's event bubbling stopping at the token for token taps
           const hovHex = pixelToHex(wx, wy)
           mapStore.setHoveredHex(hovHex)
+          // Clear disambiguation only if the tap didn't land on a dot
+          // (Pixi fires pointertap synchronously before this DOM handler runs)
+          if (!dotTappedThisFrame) mapStore.clearDisambiguation()
+          dotTappedThisFrame = false
 
           // If an allied TG is selected, set destination to the clicked hex
           const selId = mapStore.selectedTaskGroupId

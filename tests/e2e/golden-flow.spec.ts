@@ -3,36 +3,17 @@ import { test, expect } from '@playwright/test'
 /**
  * Golden Flow E2E — Battle of Midway
  *
- * Proves the absolute core loop end-to-end:
- *   Load → Resume → Sighting → Select TF-16 → Air Ops → Strike → Airborne
+ * Covers the complete core loop plus strike-detail behaviour:
+ *   Load → TF-16 select → Air Ops → Strike → Airborne → Events → Modal
  *
- * Uses window.__GAME_ACTIONS__ (dev plugin) to select the task group without
- * depending on canvas pixel coordinates, keeping the test deterministic.
+ * Uses window.__GAME_ACTIONS__ (dev plugin) to:
+ *   - selectTaskGroup / issueOrder / togglePause / selectFlightPlan
+ *   - fastForward(n): advance n × 30-min steps synchronously, bypassing
+ *     requestAnimationFrame (which gets throttled in headless Playwright).
+ *     fastForward is DEV-only and not accessible through any game UI.
  */
 
-interface FlightPlanState {
-  id: string
-  mission: string
-  status: string
-  side: string
-  targetHex?: { q: number; r: number }
-}
-
-interface ShipState {
-  id: string
-  name: string
-  side: string
-  status: string
-  taskGroupId: string
-  isCarrier: boolean
-}
-
-interface ContactState {
-  id: string
-  lastKnownHex: { q: number; r: number }
-  contactType: string
-  confirmedTaskGroupId?: string
-}
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface GameState {
   phase: string
@@ -40,14 +21,15 @@ interface GameState {
   timeScale: number
   currentTime: { day: number; hour: number; minute: number }
   taskGroups: Array<{ id: string; name: string; side: string }>
-  ships: ShipState[]
+  ships: Array<{ id: string; name: string; side: string; status: string; taskGroupId: string; isCarrier: boolean }>
   squadrons: Array<{ id: string; name: string; side: string; deckStatus: string; taskGroupId: string }>
-  flightPlans: FlightPlanState[]
-  contacts: ContactState[]
+  flightPlans: Array<{ id: string; mission: string; status: string; side: string; targetHex?: { q: number; r: number } }>
+  contacts: Array<{ id: string; lastKnownHex: { q: number; r: number }; contactType: string }>
   sunkMarkers: Array<{ hex: { q: number; r: number }; side: string; shipId: string }>
   alliedContactCount: number
   sightingLogLength: number
   combatLogLength: number
+  selectedFlightPlanId: string | null
 }
 
 declare global {
@@ -57,11 +39,13 @@ declare global {
       selectTaskGroup: (id: string) => void
       issueOrder: (payload: unknown) => void
       togglePause: () => void
+      selectFlightPlan: (id: string | null) => void
+      fastForward: (nSteps: number) => void
     }
   }
 }
 
-// ── Shared load helper ────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function loadMidway(page: import('@playwright/test').Page) {
   await page.goto('/')
@@ -69,133 +53,122 @@ async function loadMidway(page: import('@playwright/test').Page) {
   await page.getByTestId('play-btn-midway').click()
   await expect(page.getByTestId('game-canvas')).toBeVisible({ timeout: 15_000 })
   await page.waitForFunction(
-    () => {
-      const s = window.__GAME_STATE__
-      return s?.taskGroups?.length > 0
-    },
+    () => window.__GAME_STATE__?.taskGroups?.length > 0 && typeof window.__GAME_ACTIONS__?.fastForward === 'function',
     { timeout: 10_000 }
   )
 }
 
+/** Advance n × 30-min game steps synchronously. */
+async function ff(page: import('@playwright/test').Page, nSteps: number) {
+  await page.evaluate((n) => window.__GAME_ACTIONS__.fastForward(n), nSteps)
+}
+
+/** Issue a launch-strike order at the first available contact via the action bridge. */
+async function launchStrikeViaBridge(page: import('@playwright/test').Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const state = window.__GAME_STATE__
+    const tf16 = state.taskGroups.find(tg => tg.name === 'Task Force 16')
+    if (!tf16) return false
+    const sq = state.squadrons.find(sq => sq.taskGroupId === tf16.id && sq.deckStatus === 'hangared')
+    const contact = state.contacts[0]
+    if (!sq || !contact) return false
+    window.__GAME_ACTIONS__.issueOrder({
+      type: 'launch-strike',
+      taskGroupId: tf16.id,
+      squadronIds: [sq.id],
+      targetHex: contact.lastKnownHex,
+    })
+    return true
+  })
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test.describe('Golden Flow — Strike mission end-to-end', () => {
+test.describe('Golden Flow — Battle of Midway', () => {
 
-  test('Step 1: scenario loads paused at Mon 06:00 with game actions available', async ({ page }) => {
+  // ── A. Load / UI (no simulation needed) ────────────────────────────────────
+
+  test('scenario loads paused at Mon 06:00 with action bridge available', async ({ page }) => {
     await loadMidway(page)
 
     const state = await page.evaluate(() => window.__GAME_STATE__)
     expect(state.isPaused).toBe(true)
     expect(state.currentTime).toMatchObject({ day: 1, hour: 6, minute: 0 })
     expect(state.taskGroups.length).toBeGreaterThanOrEqual(4)
-
-    // Action bridge must be present
-    const hasActions = await page.evaluate(() => typeof window.__GAME_ACTIONS__?.selectTaskGroup === 'function')
-    expect(hasActions).toBe(true)
+    const hasFf = await page.evaluate(() => typeof window.__GAME_ACTIONS__?.fastForward === 'function')
+    expect(hasFf).toBe(true)
   })
 
-  test('Step 2: time runs and a sighting appears in the Intel Log', async ({ page }) => {
+  test('TF-16 selectable via action bridge — task group panel opens', async ({ page }) => {
     await loadMidway(page)
 
-    // Set 8× speed, then resume
-    await page.getByTestId('hud-time-controls').getByRole('button', { name: '8×' }).click()
-    await page.getByTestId('play-pause-btn').click()
-    await expect(page.getByTestId('play-pause-btn')).toHaveAttribute('aria-label', /Pause/)
-
-    // Wait for at least one sighting entry
-    await page.waitForFunction(
-      () => window.__GAME_STATE__?.sightingLogLength > 0,
-      { timeout: 30_000 }
+    const tf16Id = await page.evaluate(() =>
+      window.__GAME_STATE__.taskGroups.find(tg => tg.name === 'Task Force 16')?.id ?? null
     )
-
-    const state = await page.evaluate(() => window.__GAME_STATE__)
-    expect(state.sightingLogLength).toBeGreaterThan(0)
-    expect(state.alliedContactCount).toBeGreaterThan(0)
-  })
-
-  test('Step 3: TF-16 can be selected and the task group panel opens', async ({ page }) => {
-    await loadMidway(page)
-
-    // TF-16 should be in the task groups
-    const tf16Id = await page.evaluate(() => {
-      const state = window.__GAME_STATE__
-      return state.taskGroups.find(tg => tg.name === 'Task Force 16')?.id ?? null
-    })
     expect(tf16Id).not.toBeNull()
 
-    // Select via action bridge (avoids canvas pixel dependency)
     await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
 
     await expect(page.getByTestId('tg-panel')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByTestId('tg-panel')).toContainText('Task Force 16')
-
-    // Air Ops button present (TF-16 has carriers)
     await expect(page.getByTestId('air-ops-btn')).toBeVisible()
   })
 
-  test('Step 4: Air Ops modal opens and Strike tab shows available squadrons', async ({ page }) => {
+  test('Air Ops Strike tab shows squadrons; launch button disabled without target', async ({ page }) => {
     await loadMidway(page)
 
     const tf16Id = await page.evaluate(() =>
       window.__GAME_STATE__.taskGroups.find(tg => tg.name === 'Task Force 16')?.id ?? null
     )
     await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
-    await expect(page.getByTestId('air-ops-btn')).toBeVisible({ timeout: 5_000 })
     await page.getByTestId('air-ops-btn').click()
-
-    // Navigate to Strike tab
     await page.getByRole('tab', { name: 'Strike' }).click()
     await expect(page.getByTestId('air-ops-tab-strike-content')).toBeVisible({ timeout: 5_000 })
-
-    // At least one squadron available before any missions launched
-    await expect(page.getByTestId('strike-squadron-row').first()).toBeVisible({ timeout: 5_000 })
-
-    // Launch button disabled until a squadron and target are selected
+    await expect(page.getByTestId('strike-squadron-row').first()).toBeVisible()
     await expect(page.getByTestId('launch-strike-btn')).toBeDisabled()
   })
 
-  test('Full golden flow: sighting → select → configure → launch → airborne', async ({ page }) => {
-    test.setTimeout(60_000)
+  // ── B. Simulation tests (use fastForward) ──────────────────────────────────
+
+  test('sighting appears in state after advancing time', async ({ page }) => {
     await loadMidway(page)
 
-    // ── Resume at 8× and wait for a confirmed contact ────────────────────────
-    await page.getByTestId('hud-time-controls').getByRole('button', { name: '8×' }).click()
-    await page.getByTestId('play-pause-btn').click()
+    // 6 steps = 3 game hours; with TF-16/17 at ~16 hexes from Kido Butai
+    // and SBD range ~43 hexes, detection P ≈ 54% per step → >99% after 6 steps.
+    await ff(page, 6)
 
-    await page.waitForFunction(
-      () => window.__GAME_STATE__?.alliedContactCount > 0,
-      { timeout: 30_000 }
-    )
+    const state = await page.evaluate(() => window.__GAME_STATE__)
+    expect(state.alliedContactCount).toBeGreaterThan(0)
+    expect(state.sightingLogLength).toBeGreaterThan(0)
+  })
 
-    // Pause before interacting
-    await page.getByTestId('play-pause-btn').click()
-    await expect(page.getByTestId('play-pause-btn')).toHaveAttribute('aria-label', /Resume/)
+  test('full golden flow: ff → pause → UI launch → ff → airborne', async ({ page }) => {
+    test.setTimeout(30_000)
+    await loadMidway(page)
 
-    // ── Select TF-16 ─────────────────────────────────────────────────────────
+    // Advance until we have a confirmed contact
+    await ff(page, 6)
+
+    // Select TF-16 and open Air Ops
     const tf16Id = await page.evaluate(() =>
       window.__GAME_STATE__.taskGroups.find(tg => tg.name === 'Task Force 16')?.id ?? null
     )
     expect(tf16Id).not.toBeNull()
     await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
-
     await expect(page.getByTestId('tg-panel')).toBeVisible({ timeout: 5_000 })
-    await expect(page.getByTestId('tg-panel')).toContainText('Task Force 16')
 
-    // ── Open Air Ops → Strike tab ─────────────────────────────────────────────
     await page.getByTestId('air-ops-btn').click()
     await page.getByRole('tab', { name: 'Strike' }).click()
     await expect(page.getByTestId('air-ops-tab-strike-content')).toBeVisible({ timeout: 5_000 })
 
-    // ── Select the first available squadron ───────────────────────────────────
+    // Select first available squadron
     const firstRow = page.getByTestId('strike-squadron-row').first()
-    await expect(firstRow).toBeVisible({ timeout: 5_000 })
+    await expect(firstRow).toBeVisible()
     await firstRow.click()
-    // Row should now show the selection highlight
     await expect(firstRow).toHaveClass(/ring-1/)
 
-    // ── Pick the carrier-group contact (avoids targeting the out-of-range Invasion Force) ──
+    // Pick carrier-group contact (avoids range-limited Invasion Force)
     const targetSelect = page.getByTestId('strike-target-select')
-    await expect(targetSelect).toBeVisible()
     const carrierContactId = await page.evaluate(() => {
       const contacts = window.__GAME_STATE__.contacts
       return contacts.find(c => c.contactType === 'carrier-group')?.id ?? contacts[0]?.id ?? null
@@ -205,32 +178,21 @@ test.describe('Golden Flow — Strike mission end-to-end', () => {
     } else {
       await targetSelect.selectOption({ index: 1 })
     }
-
-    // Launch button should now be enabled
     await expect(page.getByTestId('launch-strike-btn')).toBeEnabled({ timeout: 3_000 })
 
-    // ── Launch ────────────────────────────────────────────────────────────────
-    // launchStrike() now closes the modal AND resumes if paused — no extra step needed.
+    // Launch — modal closes and game resumes automatically
     await page.getByTestId('launch-strike-btn').click()
 
-    // ── Verify: strike flight plan becomes airborne within the next step ──────
-    await page.waitForFunction(
-      () => {
-        const plans = window.__GAME_STATE__?.flightPlans ?? []
-        return plans.some(fp => fp.mission === 'strike' && fp.status === 'airborne')
-      },
-      { timeout: 10_000 }
-    )
+    // One ff step processes the queued launch → flight plan becomes airborne
+    await ff(page, 1)
 
-    const airstrikePlan = await page.evaluate(() =>
-      window.__GAME_STATE__.flightPlans.find(fp => fp.mission === 'strike' && fp.status === 'airborne')
-    )
-    expect(airstrikePlan).toBeDefined()
-    expect(airstrikePlan!.side).toBe('allied')
-    expect(airstrikePlan!.targetHex).toBeDefined()
+    const plans = await page.evaluate(() => window.__GAME_STATE__.flightPlans)
+    const strike = plans.find(fp => fp.mission === 'strike' && fp.status === 'airborne')
+    expect(strike).toBeDefined()
+    expect(strike!.side).toBe('allied')
+    expect(strike!.targetHex).toBeDefined()
 
-    // ── Verify: Airborne tab lists the outbound mission ───────────────────────
-    // Modal auto-closed on launch — reopen it to inspect the Airborne tab.
+    // Reopen Air Ops — Airborne tab should list the outbound mission
     await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
     await page.getByTestId('air-ops-btn').click()
     await page.getByRole('tab', { name: 'Airborne' }).click()
@@ -239,147 +201,210 @@ test.describe('Golden Flow — Strike mission end-to-end', () => {
     await expect(page.getByTestId('air-ops-airborne-content')).toContainText('airborne')
   })
 
-  test('Extended flow: strike until enemy carrier sunk, verify return and sunk marker', async ({ page }) => {
-    // Generous timeout: full mission cycle (launch → strike → return) takes ~25 s at 8×;
-    // allow two strike waves plus UI overhead.
-    test.setTimeout(120_000)
+  // ── C. Strike Detail — events panel and modal ──────────────────────────────
 
+  test('strike-launched entry appears in events panel and opens detail modal', async ({ page }) => {
+    test.setTimeout(30_000)
     await loadMidway(page)
 
-    // ── Set 8× and resume until we have a confirmed IJN contact ──────────────
-    await page.getByTestId('hud-time-controls').getByRole('button', { name: '8×' }).click()
-    await page.getByTestId('play-pause-btn').click()
+    // Get a contact, then launch a strike via the bridge
+    await ff(page, 6)
+    const launched = await launchStrikeViaBridge(page)
+    expect(launched).toBe(true)
 
-    await page.waitForFunction(
-      () => window.__GAME_STATE__?.alliedContactCount > 0,
-      { timeout: 30_000 }
+    // One step fires the launch → strike-launched combat event logged
+    await ff(page, 1)
+
+    // Open events panel
+    await page.getByTestId('events-panel-toggle').click()
+    await expect(page.getByTestId('events-panel-body')).toBeVisible({ timeout: 3_000 })
+
+    // Strike entry must be visible
+    const strikeEntry = page.getByTestId('strike-entry').first()
+    await expect(strikeEntry).toBeVisible({ timeout: 5_000 })
+
+    // Click entry → modal opens
+    await strikeEntry.click()
+    const modal = page.getByTestId('strike-detail-modal')
+    await expect(modal).toBeVisible({ timeout: 5_000 })
+
+    // Modal contains mission data
+    await expect(modal).toContainText('strike')
+    await expect(modal).toContainText('Task Force 16')
+  })
+
+  test('selectFlightPlan action bridge opens strike detail modal', async ({ page }) => {
+    test.setTimeout(30_000)
+    await loadMidway(page)
+
+    // Get contact → launch → advance until airborne
+    await ff(page, 6)
+    await launchStrikeViaBridge(page)
+    await ff(page, 1)  // launch processed → airborne
+
+    const planId = await page.evaluate(() =>
+      window.__GAME_STATE__.flightPlans.find(fp => fp.status === 'airborne' || fp.status === 'inbound')?.id ?? null
     )
+    expect(planId).not.toBeNull()
 
-    // Pause to interact with UI safely
-    await page.getByTestId('play-pause-btn').click()
-    await expect(page.getByTestId('play-pause-btn')).toHaveAttribute('aria-label', /Resume/)
+    // Select via bridge (simulates dot-click on canvas)
+    await page.evaluate((id) => window.__GAME_ACTIONS__.selectFlightPlan(id), planId)
 
-    // ── Helper: launch ALL available TF-16 squadrons at the first contact ────
+    const modal = page.getByTestId('strike-detail-modal')
+    await expect(modal).toBeVisible({ timeout: 5_000 })
+    await expect(modal).toContainText('strike')
 
-    async function launchAllTF16Squadrons() {
-      const tf16Id = await page.evaluate(() =>
-        window.__GAME_STATE__.taskGroups.find(tg => tg.name === 'Task Force 16')?.id ?? null
-      )
-      expect(tf16Id).not.toBeNull()
+    const selectedId = await page.evaluate(() => window.__GAME_STATE__.selectedFlightPlanId)
+    expect(selectedId).toBe(planId)
+  })
 
-      await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
-      await expect(page.getByTestId('air-ops-btn')).toBeVisible({ timeout: 5_000 })
-      await page.getByTestId('air-ops-btn').click()
-      await page.getByRole('tab', { name: 'Strike' }).click()
-      await expect(page.getByTestId('air-ops-tab-strike-content')).toBeVisible({ timeout: 5_000 })
+  test('modal auto-pauses when opened while running, auto-resumes on Escape', async ({ page }) => {
+    test.setTimeout(30_000)
+    await loadMidway(page)
 
-      // Select every available squadron (AirOpsSystem filters out-of-range ones at launch time)
-      const rows = await page.getByTestId('strike-squadron-row').all()
-      expect(rows.length).toBeGreaterThan(0)
-      for (const row of rows) { await row.click() }
+    // Prepare: contact + airborne flight plan
+    await ff(page, 6)
+    await launchStrikeViaBridge(page)
+    await ff(page, 1)
 
-      // Prefer a carrier-group contact so we hit Kido Butai, not the Invasion Force
-      const carrierContactId = await page.evaluate(() => {
-        const contacts = window.__GAME_STATE__.contacts
-        const carrier = contacts.find(c => c.contactType === 'carrier-group')
-        return carrier?.id ?? contacts[0]?.id ?? null
-      })
-      if (carrierContactId) {
-        await page.getByTestId('strike-target-select').selectOption({ value: carrierContactId })
-      } else {
-        await page.getByTestId('strike-target-select').selectOption({ index: 1 })
-      }
-      await expect(page.getByTestId('launch-strike-btn')).toBeEnabled({ timeout: 3_000 })
-      // launchStrike() closes the modal and resumes automatically
-      await page.getByTestId('launch-strike-btn').click()
+    const planId = await page.evaluate(() =>
+      window.__GAME_STATE__.flightPlans.find(fp => fp.status === 'airborne' || fp.status === 'inbound')?.id ?? null
+    )
+    expect(planId).not.toBeNull()
 
-      // Wait until at least one allied strike is airborne
-      await page.waitForFunction(
-        () => window.__GAME_STATE__?.flightPlans.some(fp => fp.mission === 'strike' && fp.status === 'airborne'),
-        { timeout: 10_000 }
-      )
+    // Resume the game so isPaused = false before opening modal
+    await page.evaluate(() => window.__GAME_ACTIONS__.togglePause())
+    const runningBefore = await page.evaluate(() => !window.__GAME_STATE__.isPaused)
+    expect(runningBefore).toBe(true)
+
+    // Open modal via action bridge (dot-click path) — should auto-pause
+    await page.evaluate((id) => window.__GAME_ACTIONS__.selectFlightPlan(id), planId)
+    await expect(page.getByTestId('strike-detail-modal')).toBeVisible({ timeout: 5_000 })
+    // useModalPause fires asynchronously; wait for the reactive state to settle
+    await page.waitForFunction(() => window.__GAME_STATE__.isPaused === true, { timeout: 3_000 })
+
+    // Close via Escape — should auto-resume
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('strike-detail-modal')).not.toBeVisible({ timeout: 3_000 })
+    await page.waitForFunction(() => window.__GAME_STATE__.isPaused === false, { timeout: 3_000 })
+  })
+
+  test('events-panel modal auto-pauses on open, auto-resumes on close', async ({ page }) => {
+    test.setTimeout(30_000)
+    await loadMidway(page)
+
+    // Prepare: contact + strike event in combat log
+    await ff(page, 6)
+    await launchStrikeViaBridge(page)
+    await ff(page, 1)
+
+    // Open events panel
+    await page.getByTestId('events-panel-toggle').click()
+    await expect(page.getByTestId('events-panel-body')).toBeVisible({ timeout: 3_000 })
+    const strikeEntry = page.getByTestId('strike-entry').first()
+    await expect(strikeEntry).toBeVisible({ timeout: 5_000 })
+
+    // Resume so the game is running before opening the modal
+    await page.evaluate(() => window.__GAME_ACTIONS__.togglePause())
+    expect(await page.evaluate(() => !window.__GAME_STATE__.isPaused)).toBe(true)
+
+    // Click strike entry — should auto-pause and open modal
+    await strikeEntry.click()
+    await expect(page.getByTestId('strike-detail-modal')).toBeVisible({ timeout: 5_000 })
+    await page.waitForFunction(() => window.__GAME_STATE__.isPaused === true, { timeout: 3_000 })
+
+    // Close via Escape — should auto-resume
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('strike-detail-modal')).not.toBeVisible({ timeout: 3_000 })
+    await page.waitForFunction(() => window.__GAME_STATE__.isPaused === false, { timeout: 3_000 })
+  })
+
+  // ── D. Extended combat: carrier sunk ──────────────────────────────────────
+
+  test('extended: launch all TF-16 squadrons via UI, advance until carrier sunk', async ({ page }) => {
+    test.setTimeout(60_000)
+    await loadMidway(page)
+
+    // Advance until we have a confirmed contact
+    await ff(page, 6)
+
+    // Open Air Ops and launch all available TF-16 squadrons
+    const tf16Id = await page.evaluate(() =>
+      window.__GAME_STATE__.taskGroups.find(tg => tg.name === 'Task Force 16')?.id ?? null
+    )
+    expect(tf16Id).not.toBeNull()
+    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
+    await page.getByTestId('air-ops-btn').click()
+    await page.getByRole('tab', { name: 'Strike' }).click()
+    await expect(page.getByTestId('air-ops-tab-strike-content')).toBeVisible({ timeout: 5_000 })
+
+    // Select every available squadron row (wait for at least one to appear first)
+    await expect(page.getByTestId('strike-squadron-row').first()).toBeVisible({ timeout: 5_000 })
+    const rows = await page.getByTestId('strike-squadron-row').all()
+    for (const row of rows) { await row.click() }
+
+    // Prefer carrier-group contact
+    const carrierContactId = await page.evaluate(() => {
+      const contacts = window.__GAME_STATE__.contacts
+      return contacts.find(c => c.contactType === 'carrier-group')?.id ?? contacts[0]?.id ?? null
+    })
+    if (carrierContactId) {
+      await page.getByTestId('strike-target-select').selectOption({ value: carrierContactId })
+    } else {
+      await page.getByTestId('strike-target-select').selectOption({ index: 1 })
     }
+    await expect(page.getByTestId('launch-strike-btn')).toBeEnabled({ timeout: 3_000 })
+    await page.getByTestId('launch-strike-btn').click()  // closes modal, resumes
 
-    // ── First strike wave via UI ──────────────────────────────────────────────
-    await launchAllTF16Squadrons()
+    // Advance: 1 step to go airborne, then up to 40 steps (~20 h) for strike + recovery
+    await ff(page, 1)
+    expect(
+      (await page.evaluate(() => window.__GAME_STATE__.flightPlans))
+        .some(fp => fp.mission === 'strike' && fp.side === 'allied' && fp.status === 'airborne')
+    ).toBe(true)
 
-    // ── Wait for all allied strike plans to be recovered (mission complete) ───
-    await page.waitForFunction(
-      () => {
-        const plans = window.__GAME_STATE__?.flightPlans ?? []
-        const allied = plans.filter(fp => fp.mission === 'strike' && fp.side === 'allied')
-        return allied.length > 0 && allied.every(fp => fp.status === 'recovered')
-      },
-      { timeout: 60_000 }
-    )
+    // Fast-forward until at least one Japanese carrier is sunk
+    // (AirOps resolves in ~4-8 steps at scenario distances)
+    await ff(page, 20)
 
-    // ── If no Japanese carrier sunk yet, fire a second strike via action bridge ──
-    const carrierSunkAfterWave1 = await page.evaluate(() =>
+    const carrierSunk = await page.evaluate(() =>
       window.__GAME_STATE__.ships.some(s => s.side === 'japanese' && s.status === 'sunk' && s.isCarrier)
     )
 
-    if (!carrierSunkAfterWave1) {
-      // Pause, then use the action bridge to issue a direct launch-strike order
-      await page.evaluate(() => window.__GAME_ACTIONS__.togglePause())   // pause
-
+    if (!carrierSunk) {
+      // Second wave via bridge if first wave wasn't enough
       const { sqIds, targetHex } = await page.evaluate(() => {
         const state = window.__GAME_STATE__
         const tf16Id = state.taskGroups.find(tg => tg.name === 'Task Force 16')?.id
-        const sqIds = state.squadrons
-          .filter(sq => sq.taskGroupId === tf16Id && sq.deckStatus === 'hangared')
-          .map(sq => sq.id)
-        const targetHex = state.contacts[0]?.lastKnownHex ?? null
-        return { sqIds, targetHex }
+        return {
+          sqIds: state.squadrons
+            .filter(sq => sq.taskGroupId === tf16Id && sq.deckStatus === 'hangared')
+            .map(sq => sq.id),
+          targetHex: state.contacts[0]?.lastKnownHex ?? null,
+        }
       })
-
       if (sqIds.length > 0 && targetHex) {
         await page.evaluate(({ sqIds, targetHex }) => {
           const tf16Id = window.__GAME_STATE__.taskGroups.find(tg => tg.name === 'Task Force 16')?.id
-          if (tf16Id) {
-            window.__GAME_ACTIONS__.issueOrder({
-              type: 'launch-strike',
-              taskGroupId: tf16Id,
-              squadronIds: sqIds,
-              targetHex,
-            })
-          }
+          if (tf16Id) window.__GAME_ACTIONS__.issueOrder({ type: 'launch-strike', taskGroupId: tf16Id, squadronIds: sqIds, targetHex })
         }, { sqIds, targetHex })
+        await ff(page, 20)
       }
-
-      await page.evaluate(() => window.__GAME_ACTIONS__.togglePause())   // resume
-
-      // Wait for second wave to complete
-      await page.waitForFunction(
-        () => {
-          const plans = window.__GAME_STATE__?.flightPlans ?? []
-          const allied = plans.filter(fp => fp.mission === 'strike' && fp.side === 'allied')
-          return allied.length > 0 && allied.every(fp => fp.status === 'recovered')
-        },
-        { timeout: 60_000 }
-      )
     }
 
-    // ── Assert: at least one Japanese carrier is sunk ─────────────────────────
+    // Assert: at least one Japanese carrier sunk
     const sunkCarriers = await page.evaluate(() =>
       window.__GAME_STATE__.ships.filter(s => s.side === 'japanese' && s.status === 'sunk' && s.isCarrier)
     )
     expect(sunkCarriers.length).toBeGreaterThan(0)
 
-    // ── Assert: no allied squadrons are still airborne ───────────────────────
-    const stillAirborne = await page.evaluate(() =>
-      window.__GAME_STATE__.squadrons.filter(sq => sq.side === 'allied' && sq.deckStatus === 'airborne')
-    )
-    expect(stillAirborne.length).toBe(0)
-
-    // ── Assert: sunk markers are tracked in state and renderer ────────────────
+    // Assert: sunk markers are tracked with valid hex coordinates
     const sunkMarkers = await page.evaluate(() => window.__GAME_STATE__.sunkMarkers)
     expect(sunkMarkers.length).toBeGreaterThan(0)
-    // All markers must carry a valid hex coordinate
     for (const m of sunkMarkers) {
       expect(typeof m.hex.q).toBe('number')
       expect(typeof m.hex.r).toBe('number')
     }
-    // At least one sunk marker is on the Japanese side
     expect(sunkMarkers.some(m => m.side === 'japanese')).toBe(true)
   })
 

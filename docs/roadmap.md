@@ -1,28 +1,31 @@
-pnp# Karriers — Upcoming Work
+# Karriers — Upcoming Work
 
 Architecture reference, folder structure, engine internals, and order types live in `AGENTS.md`.
 Completed sprint history lives in `docs/done/sprints.md`.
 
 ---
 
-## Current State (end of Sprint 11)
+## Current State (end of Sprint 13)
 
 - ✅ Full engine: movement, search, fog of war, air ops, combat, damage, victory
 - ✅ PixiJS renderer: hex grid, unit tokens, animated strike dots (outbound + return), flight path arcs anchored to launch position, sunk-ship markers (red ✕ diamond), FOW contacts at lastKnownHex, selection ring
-- ✅ HUD: time controls, task group panel, order modal, air ops modal (Select All, auto-close + auto-resume on launch), keyboard shortcuts, command palette, toasts
+- ✅ HUD: time controls, task group panel, order modal, air ops modal (Select All), keyboard shortcuts, command palette, toasts
 - ✅ Scenario: Battle of Midway (4 TFs, 35 ships, 25 squadrons, 4 victory conditions)
-- ✅ Auto-speed: engine ramps to 8× when enemy carrier sinks and all allied planes are home
 - ✅ Sunk markers: permanent red ✕ diamond drawn at the hex where each ship went down
 - ✅ Scenario end screen: winner label, Allied/Japanese points, result line, Return to Menu
-- ✅ Vitest setup: 72 tests across 9 files — engine (25), stores (17), component behaviour (30); all green in < 1 s
-- ✅ Playwright E2E: 19/19 tests passing (~32 s); `pnpm test:e2e` fully self-contained
-- ✅ `window.__GAME_STATE__` + `window.__GAME_ACTIONS__` dev bridge exposes full live state and game actions to Playwright
+- ✅ Vitest: 72 tests across 9 files — all green in < 1 s
+- ✅ Playwright E2E: 21/21 tests passing; `pnpm test:e2e` fully self-contained
+- ✅ `window.__GAME_STATE__` + `window.__GAME_ACTIONS__` dev bridge
+- ✅ Game shell: TopStatusBar, NavSidebar (collapsible), EngagementEventsPanel (collapsible); sea-blue palette
+- ✅ Modal pause UX: all player-input modals (AirOps, Order, command palette, StrikeDetailModal) auto-pause the simulation on open and resume on close
+- ✅ `strike-launched` engine events: flow through combatLog into the events panel
+- ✅ Strike event log: EngagementEventsPanel shows launches, resolutions, hits, sightings — clickable strike entries
+- ✅ Per-strike detail popup: StrikeDetailModal shows squadron, carrier, target, times, aircraft losses, hit breakdown, narrative
 - ❌ MapTiler basemap
 - ❌ Custom sprite art for unit tokens
 - ❌ Japanese AI (no enemy strikes yet)
 - ❌ CAP missions
 - ❌ Scout/reconnaissance missions
-- ❌ Strike event log / per-strike detail popup
 - ❌ Clickable in-flight squadrons
 
 ---
@@ -34,38 +37,6 @@ Completed sprint history lives in `docs/done/sprints.md`.
 ---
 
 # Gameplay Sprints
-
-## Sprint 12 — Tactical Map UI Layout & MVP Shell
-
-**Goal:** Deliver a new command-center shell that makes the Tactical Map the app's primary MVP experience, while reusing existing components and avoiding gameplay rewrites.
-
-- **Tactical Map first:** implement the layout shown in the layout image attachments shared in this conversation and the `public/assets/layouts` folder, with `TacOps` branding, left-side navigation, top status bar, and a central map canvas. Keep the focus on the map screen only.
-- `public\assets\layouts\karriers_all_collapsed.png` represents all side panels collapsed, showing the maximum map area.
-- `public\assets\layouts\karriers_event_log.png` shows event log timeline, as Nuxt timeline component on the right.
-- **Reuse existing UI pieces:** preserve `GameCanvas.vue`, `TaskGroupPanel.vue`, `TimeControls.vue`, `MiniLog.vue`, and the existing intelligence/task-group control panel behavior. Only refactor placement and shell organization.
-- **No Static placeholders for secondary tabs:** no `Units`, `Missions`, `Intel`, and `Settings` tabs with mock cards or summary panels. These are visual placeholders only; no live implementation is required this sprint.
-- you can still keep outmost menu with Tactical Map option
-- `karriers` is the name of the app 
-- **Minimal changes to current app state:** keep `window.__GAME_STATE__` / `window.__GAME_ACTIONS__`, Pinia stores, and engine event flow unchanged. Avoid adding new renderer layers unless strictly necessary for the layout.
-- **Refined palette:** move toward a lighter sea-blue theme and reduce the current heavy black. Prefer palette token updates over broad style rewrites so the change stays cosmetic and low-risk.
-- **Right-side event panel:** introduce an `Engagement Events` or activity sidebar for the Tactical Map screen that surfaces recent game events. This can reuse the existing log style and remain data-driven from existing game event feeds.
-- **Design guidance:** treat the provided layout images as a template, not a rigid spec. Icons are suggestive; visual polish can be deferred to later sprints.  Keep existing unit names and specs, no need to try to match any names or designations you see at layout.
-
-## Sprint 13 — Strike Event Log & Per-Strike Detail Popup
-
-**Goal:** Players can see what happened and why. Feedback closes the gameplay loop.
-
-- **Active event log panel**: a scrollable sidebar log showing all significant events in chronological order — strikes launched, contacts detected, intercepts, hits, misses, ships sunk. Distinct from the existing intelligence log (which covers strategic-level messages).
-- possibly use https://ui.nuxt.com/docs/components/timeline component for a clean vertical timeline layout.
-- **Per-strike detail popup**: clicking any strike entry in the event log (or clicking an in-flight squadron dot on the map) opens a detail popup showing:
-  - Squadron name, mission type, origin carrier
-  - Target TF / ship
-  - Planes launched / planes lost to CAP / planes returning
-  - Hits scored, damage dealt (if resolved)
-  - ETA or time resolved
-- First version: list view only, no charts. Designed so detail cards can be enriched in future versions.
-- Log persists for the duration of the scenario; exportable as plain text is a future concern.
-- Tests: log entry created for each strike launch and resolution, popup opens with correct data.
 
 ## Sprint 14 — Clickable In-Flight Squadrons
 
@@ -84,12 +55,15 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 a bit of polish to make further sprints more intuitive and visually clear:
 
+- make it easier to click on a squadron, as it´s hard to click on a small dot when its moving across the screen
+- Add range rings around each unit: search range for carriers, strike range for planes, detection range for scouts. Color-code by team (red for IJN, blue for US).
 - teams are red and blue, incidentally IJN and US
 - use red squares for IJN carrier groups, and blue squares for US
-- sunk carriers are red ✕ diamonds
-- just one icon per map position, if multiple units occupy the same hex, here´re the order sunk > group > contact (meaning if sunk, all I see is the red X))
+- use red circles for IJN squadrons, and blue circles for US
+- use red triangles for IJN scouts, and blue triangles for US
+- sunk carriers are red ✕ diamonds, for both sides
+- just one icon per map position, if multiple units occupy the same hex, here is the order sunk > group > contact (meaning if sunk, all I see is the red X))
 - use red dot for IJN squadrons, and blue dots for US
-- circle range around each unit, according to its team color
 
 ## Sprint 16 — Enemy AI (Japanese Strike Operations)
 

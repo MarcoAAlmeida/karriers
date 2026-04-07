@@ -3,6 +3,13 @@ export const useMapStore = defineStore('map', () => {
   const selectedTaskGroupId = ref<string | null>(null)
   const hoveredHex = ref<{ q: number; r: number } | null>(null)
 
+  // ── Flight plan interaction ───────────────────────────────────────────────
+  const selectedFlightPlanId = ref<string | null>(null)
+  const hoveredFlightPlanId = ref<string | null>(null)
+  const hoverScreenPos = ref<{ x: number; y: number } | null>(null)
+  const disambiguationPlans = ref<string[]>([])
+  const disambiguationPos = ref<{ x: number; y: number } | null>(null)
+
   // ── Viewport ──────────────────────────────────────────────────────────────
   /** World-space pixel offset of the viewport origin. */
   const viewportX = ref(0)
@@ -26,14 +33,44 @@ export const useMapStore = defineStore('map', () => {
     zoom.value = z
   }
 
+  function selectFlightPlan(id: string | null): void {
+    selectedFlightPlanId.value = id
+    disambiguationPlans.value = []
+    disambiguationPos.value = null
+  }
+
+  function hoverFlightPlan(id: string | null, pos: { x: number; y: number } | null): void {
+    hoveredFlightPlanId.value = id
+    hoverScreenPos.value = pos
+  }
+
+  function setDisambiguation(planIds: string[], pos: { x: number; y: number }): void {
+    disambiguationPlans.value = planIds
+    disambiguationPos.value = pos
+  }
+
+  function clearDisambiguation(): void {
+    disambiguationPlans.value = []
+    disambiguationPos.value = null
+  }
+
   return {
     selectedTaskGroupId,
     hoveredHex,
+    selectedFlightPlanId,
+    hoveredFlightPlanId,
+    hoverScreenPos,
+    disambiguationPlans,
+    disambiguationPos,
     viewportX,
     viewportY,
     zoom,
     selectTaskGroup,
     setHoveredHex,
-    setViewport
+    setViewport,
+    selectFlightPlan,
+    hoverFlightPlan,
+    setDisambiguation,
+    clearDisambiguation,
   }
 })

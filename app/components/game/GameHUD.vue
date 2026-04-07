@@ -130,6 +130,8 @@ defineShortcuts({
       if (showCommandPalette.value) { showCommandPalette.value = false; return }
       if (showOrderModal.value) { showOrderModal.value = false; return }
       if (showAirOpsModal.value) { showAirOpsModal.value = false; return }
+      // Clear flight plan selection — index.vue watch closes the strike modal if open
+      mapStore.selectFlightPlan(null)
       mapStore.selectTaskGroup(null)
     },
     usingInput: false

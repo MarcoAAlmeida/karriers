@@ -46,6 +46,7 @@
 
 <script setup lang="ts">
 const gameStore = useGameStore()
+const mapStore = useMapStore()
 const navExpanded = ref(false)
 const eventsOpen = ref(false)
 
@@ -55,5 +56,22 @@ const selectedStrikePlanId = ref<string | null>(null)
 function openStrikeDetail(planId: string) {
   selectedStrikePlanId.value = planId
   strikeModalOpen.value = true
+  // Keep map store selection in sync so Escape (via GameHUD) can close this modal.
+  // Vue won't re-trigger the selectedFlightPlanId watcher if the value is unchanged.
+  mapStore.selectFlightPlan(planId)
 }
+
+// Open modal when a flight plan is selected; close it when selection is cleared
+watch(() => mapStore.selectedFlightPlanId, (id) => {
+  if (id) {
+    openStrikeDetail(id)
+  } else if (strikeModalOpen.value) {
+    strikeModalOpen.value = false
+  }
+})
+
+// Clear the map selection when modal is dismissed
+watch(strikeModalOpen, (open) => {
+  if (!open) mapStore.selectFlightPlan(null)
+})
 </script>

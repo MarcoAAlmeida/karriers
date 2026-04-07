@@ -30,7 +30,12 @@
       "Bash(curl -s http://localhost:3000)",
       "Bash(pnpm test:e2e:*)",
       "Bash(taskkill /PID 56264 /F)",
-      "Bash(npx kill-port:*)"
+      "Bash(npx kill-port:*)",
+      "Bash(PLAYWRIGHT_REUSE_SERVER=1 pnpm test:e2e)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill:*)",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)"
     ]
   }
 }

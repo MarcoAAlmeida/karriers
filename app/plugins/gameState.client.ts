@@ -23,6 +23,34 @@ export default defineNuxtPlugin(() => {
     selectTaskGroup: (id: string) => mapStore.selectTaskGroup(id),
     issueOrder: (payload: unknown) => gameStore.issueOrder(payload as any),
     togglePause: () => gameStore.togglePause(),
+    selectFlightPlan: (id: string | null) => mapStore.selectFlightPlan(id),
+
+    /**
+     * Advance the simulation by exactly `nSteps` × 30-minute steps, synchronously,
+     * without waiting for requestAnimationFrame. Use in Playwright tests to avoid
+     * rAF throttling in headless mode.
+     */
+    fastForward: (nSteps: number) => {
+      const engine = gameStore.engine
+      if (!engine) return
+      const wasPaused = engine.isPaused
+      const prevScale = engine.timeScale
+      engine.setTimeScale(1)
+      if (wasPaused) engine.resume()
+      // 30 sim-minutes × 100ms/sim-minute = 3 000ms at 1× fires exactly one step
+      const STEP_MS = 30 * 100
+      for (let i = 0; i < nSteps; i++) {
+        const result = engine.tick(STEP_MS)
+        if (result.stepFired && result.snapshot) {
+          forcesStore.syncFromSnapshot(result.snapshot)
+          intelStore.syncFromSnapshot(result.snapshot)
+        }
+        if (engine.isPaused) break   // scenario ended
+      }
+      engine.setTimeScale(prevScale)
+      if (wasPaused) engine.pause()
+      gameStore.isPaused = engine.isPaused
+    },
   }
 
   Object.defineProperty(window, '__GAME_STATE__', {
@@ -88,7 +116,8 @@ export default defineNuxtPlugin(() => {
 
         alliedContactCount: intelStore.alliedContacts.size,
         sightingLogLength: intelStore.sightingLog.length,
-        combatLogLength: intelStore.combatLog.length
+        combatLogLength: intelStore.combatLog.length,
+        selectedFlightPlanId: mapStore.selectedFlightPlanId
       }
     },
     configurable: true,
