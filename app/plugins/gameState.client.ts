@@ -37,8 +37,8 @@ export default defineNuxtPlugin(() => {
       const prevScale = engine.timeScale
       engine.setTimeScale(1)
       if (wasPaused) engine.resume()
-      // 30 sim-minutes × 100ms/sim-minute = 3 000ms at 1× fires exactly one step
-      const STEP_MS = 30 * 100
+      // One step = STEP_MINUTES × MS_PER_SIM_MINUTE_AT_1X (currently 30 × 130 = 3 900ms)
+      const STEP_MS = 30 * 130
       for (let i = 0; i < nSteps; i++) {
         const result = engine.tick(STEP_MS)
         if (result.stepFired && result.snapshot) {

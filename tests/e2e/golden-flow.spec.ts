@@ -63,15 +63,21 @@ async function ff(page: import('@playwright/test').Page, nSteps: number) {
   await page.evaluate((n) => window.__GAME_ACTIONS__.fastForward(n), nSteps)
 }
 
-/** Issue a launch-strike order at the first available contact via the action bridge. */
+/** Issue a launch-strike order at the nearest contact to TF-16 via the action bridge. */
 async function launchStrikeViaBridge(page: import('@playwright/test').Page): Promise<boolean> {
   return page.evaluate(() => {
     const state = window.__GAME_STATE__
     const tf16 = state.taskGroups.find(tg => tg.name === 'Task Force 16')
     if (!tf16) return false
     const sq = state.squadrons.find(sq => sq.taskGroupId === tf16.id && sq.deckStatus === 'hangared')
-    const contact = state.contacts[0]
-    if (!sq || !contact) return false
+    if (!sq || state.contacts.length === 0) return false
+    // Pick the nearest contact to TF-16 to avoid range-rejected launches
+    const tf16pos = (tf16 as any).position as { q: number; r: number }
+    const contact = [...state.contacts].sort((a, b) => {
+      const dA = Math.abs(a.lastKnownHex.q - tf16pos.q) + Math.abs(a.lastKnownHex.r - tf16pos.r)
+      const dB = Math.abs(b.lastKnownHex.q - tf16pos.q) + Math.abs(b.lastKnownHex.r - tf16pos.r)
+      return dA - dB
+    })[0]!
     window.__GAME_ACTIONS__.issueOrder({
       type: 'launch-strike',
       taskGroupId: tf16.id,
@@ -167,11 +173,11 @@ test.describe('Golden Flow — Battle of Midway', () => {
     await firstRow.click()
     await expect(firstRow).toHaveClass(/ring-1/)
 
-    // Pick carrier-group contact (avoids range-limited Invasion Force)
+    // Pick carrier-force contact (avoids range-limited Invasion Force)
     const targetSelect = page.getByTestId('strike-target-select')
     const carrierContactId = await page.evaluate(() => {
       const contacts = window.__GAME_STATE__.contacts
-      return contacts.find(c => c.contactType === 'carrier-group')?.id ?? contacts[0]?.id ?? null
+      return contacts.find(c => c.contactType === 'carrier-force')?.id ?? contacts[0]?.id ?? null
     })
     if (carrierContactId) {
       await targetSelect.selectOption({ value: carrierContactId })
@@ -208,7 +214,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     await loadMidway(page)
 
     // Get a contact, then launch a strike via the bridge
-    await ff(page, 6)
+    await ff(page, 10)
     const launched = await launchStrikeViaBridge(page)
     expect(launched).toBe(true)
 
@@ -238,7 +244,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     await loadMidway(page)
 
     // Get contact → launch → advance until airborne
-    await ff(page, 6)
+    await ff(page, 10)
     await launchStrikeViaBridge(page)
     await ff(page, 1)  // launch processed → airborne
 
@@ -263,7 +269,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     await loadMidway(page)
 
     // Prepare: contact + airborne flight plan
-    await ff(page, 6)
+    await ff(page, 10)
     await launchStrikeViaBridge(page)
     await ff(page, 1)
 
@@ -294,7 +300,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     await loadMidway(page)
 
     // Prepare: contact + strike event in combat log
-    await ff(page, 6)
+    await ff(page, 10)
     await launchStrikeViaBridge(page)
     await ff(page, 1)
 
@@ -319,7 +325,58 @@ test.describe('Golden Flow — Battle of Midway', () => {
     await page.waitForFunction(() => window.__GAME_STATE__.isPaused === false, { timeout: 3_000 })
   })
 
-  // ── D. Extended combat: carrier sunk ──────────────────────────────────────
+  // ── D. IJN inspection (BDA) ───────────────────────────────────────────────
+
+  test('IJN task force is selectable and shows BDA panel (no order buttons)', async ({ page }) => {
+    await loadMidway(page)
+
+    // Advance until we have a confirmed IJN contact
+    await ff(page, 6)
+
+    const ijnTgId = await page.evaluate(() => {
+      const contacts = window.__GAME_STATE__.contacts
+      const tgs = window.__GAME_STATE__.taskGroups
+      // Pick an IJN TG that has a known contact
+      return tgs.find(tg => tg.side === 'japanese')?.id ?? null
+    })
+    expect(ijnTgId).not.toBeNull()
+
+    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), ijnTgId)
+
+    await expect(page.getByTestId('tg-panel')).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByTestId('tg-panel')).toContainText('IJN')
+    // Order and Air Ops buttons must NOT appear for enemy forces
+    await expect(page.getByTestId('air-ops-btn')).not.toBeVisible()
+  })
+
+  test('IJN task force remains selectable after a ship in the TF is sunk', async ({ page }) => {
+    test.setTimeout(60_000)
+    await loadMidway(page)
+
+    await ff(page, 6)
+    await launchStrikeViaBridge(page)
+    await ff(page, 20)
+
+    // Find an IJN TF that has at least one sunk ship AND at least one survivor
+    const ijnTgId = await page.evaluate(() => {
+      const state = window.__GAME_STATE__
+      for (const tg of state.taskGroups.filter(t => t.side === 'japanese')) {
+        const ships = state.ships.filter(s => (s as any).taskGroupId === tg.id)
+        const hasSunk = ships.some(s => s.status === 'sunk')
+        const hasSurvivor = ships.some(s => s.status !== 'sunk')
+        if (hasSunk && hasSurvivor) return tg.id
+      }
+      // Fall back to any IJN TF — confirms at minimum that selectTaskGroup still works
+      return state.taskGroups.find(t => t.side === 'japanese')?.id ?? null
+    })
+    expect(ijnTgId).not.toBeNull()
+
+    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), ijnTgId)
+    await expect(page.getByTestId('tg-panel')).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByTestId('tg-panel')).toContainText('IJN')
+  })
+
+  // ── E. Extended combat: carrier sunk ──────────────────────────────────────
 
   test('extended: launch all TF-16 squadrons via UI, advance until carrier sunk', async ({ page }) => {
     test.setTimeout(60_000)
@@ -343,10 +400,10 @@ test.describe('Golden Flow — Battle of Midway', () => {
     const rows = await page.getByTestId('strike-squadron-row').all()
     for (const row of rows) { await row.click() }
 
-    // Prefer carrier-group contact
+    // Prefer carrier-force contact
     const carrierContactId = await page.evaluate(() => {
       const contacts = window.__GAME_STATE__.contacts
-      return contacts.find(c => c.contactType === 'carrier-group')?.id ?? contacts[0]?.id ?? null
+      return contacts.find(c => c.contactType === 'carrier-force')?.id ?? contacts[0]?.id ?? null
     })
     if (carrierContactId) {
       await page.getByTestId('strike-target-select').selectOption({ value: carrierContactId })

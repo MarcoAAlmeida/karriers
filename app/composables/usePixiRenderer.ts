@@ -2,7 +2,8 @@ import { Application, Container, Graphics, Text } from 'pixi.js'
 import type { Ref } from 'vue'
 import type { TaskGroup, FlightPlan, HexCoord, ContactRecord } from '@game/types'
 import { gameTimeToMinutes } from '@game/types'
-import { hexToPixel, hexCorners, GRID_WIDTH, GRID_HEIGHT, pixelToHex } from '@game/utils/hexMath'
+import { hexToPixel, hexCorners, GRID_WIDTH, GRID_HEIGHT, pixelToHex, NM_PER_HEX, getHexSize } from '@game/utils/hexMath'
+import { AIRCRAFT_TYPES } from '@game/data/aircraftTypes'
 import { useHexMap } from './useHexMap'
 
 // ── Colour palette ─────────────────────────────────────────────────────────
@@ -27,6 +28,8 @@ const COL = {
   labelJapanese: 0xffaa88,
   labelContact: 0xffdd88,
   midwayLabel: 0x88cc66,
+  rangeSearch: 0x4499ff,    // blue search ring (IJN: red tinted via side check)
+  rangeStrike: 0xffcc33,    // amber strike ring
 }
 
 // ── Known atoll/island hex positions ──────────────────────────────────────
@@ -51,6 +54,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
   let world: Container          // panned/zoomed container
   let terrainLayer: Graphics
   let gridLayer: Graphics
+  let rangeRingLayer: Graphics
   let fogLayer: Container
   let contactLayer: Container
   let sunkMarkerLayer: Container
@@ -108,18 +112,19 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     world = new Container()
     app.stage.addChild(world)
 
-    terrainLayer   = new Graphics()
-    gridLayer      = new Graphics()
-    fogLayer       = new Container()
-    contactLayer   = new Container()
+    terrainLayer    = new Graphics()
+    gridLayer       = new Graphics()
+    rangeRingLayer  = new Graphics()
+    fogLayer        = new Container()
+    contactLayer    = new Container()
     sunkMarkerLayer = new Container()
-    unitLayer      = new Container()
+    unitLayer       = new Container()
     flightPathLayer = new Graphics()
     strikeDotLayer  = new Container()
     selectionLayer  = new Graphics()
     annotationLayer = new Container()
 
-    world.addChild(terrainLayer, gridLayer, fogLayer, contactLayer, sunkMarkerLayer, unitLayer, flightPathLayer, strikeDotLayer, selectionLayer, annotationLayer)
+    world.addChild(terrainLayer, gridLayer, rangeRingLayer, fogLayer, contactLayer, sunkMarkerLayer, unitLayer, flightPathLayer, strikeDotLayer, selectionLayer, annotationLayer)
 
     drawTerrain()
     drawGrid()
@@ -136,8 +141,11 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     watch(() => forcesStore.flightPlans, onFlightPlansChanged, { immediate: true })
     watch(() => mapStore.selectedTaskGroupId, drawSelection)
     watch(() => gameStore.phase, onPhaseChanged)
-    // Rebuild tokens when contact picture changes (fog-of-war)
-    watch(() => intelStore.activeAlliedContacts, () => rebuildUnitTokens(forcesStore.taskGroups))
+    // Rebuild tokens and range rings when contact picture changes (fog-of-war)
+    watch(() => intelStore.activeAlliedContacts, () => {
+      rebuildUnitTokens(forcesStore.taskGroups)
+      drawRangeRings(forcesStore.taskGroups)
+    })
     // Redraw sunk markers whenever new ships go down
     watch(() => intelStore.sunkMarkers, drawSunkMarkers, { immediate: true })
   })
@@ -235,6 +243,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     }
 
     rebuildUnitTokens(tgs)
+    drawRangeRings(tgs)
   }
 
   function rebuildUnitTokens(tgs: Map<string, TaskGroup>): void {
@@ -253,15 +262,20 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
         // Fog-of-war: enemy TGs only render if there is a confirmed active contact
         const contact = getContactForTG(tg.id)
         let token = unitTokens.get(tg.id)
-        if (!contact) {
-          // No contact — remove token
+
+        const hasActiveSurvivors = forcesStore.shipsInGroup(tg.id).some(s => s.status !== 'sunk')
+        const shouldHide = !contact || !hasActiveSurvivors
+
+        if (shouldHide) {
+          // No contact, or entire TF wiped out — remove token
           if (token) {
             unitLayer.removeChild(token)
             unitTokens.delete(tg.id)
           }
           continue
         }
-        // Confirmed contact — render diamond at lastKnownHex
+
+        // Confirmed contact — render square at lastKnownHex
         if (!token) {
           token = buildUnitToken(tg, contact.lastKnownHex)
           unitLayer.addChild(token)
@@ -300,47 +314,40 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
   function buildUnitToken(tg: TaskGroup, contactPos?: HexCoord): Container {
     const isAllied = tg.side === 'allied'
-    const isContact = contactPos !== undefined   // only called with contactPos for enemy contact tokens
+    const isContact = contactPos !== undefined   // only called with contactPos for confirmed enemy contact tokens
 
     const token = new Container()
     token.label = tg.id
 
-    if (!isAllied && isContact) {
-      // Enemy contact — orange diamond
-      const g = new Graphics()
-      g.poly([-12, 0, 0, -12, 12, 0, 0, 12]).fill({ color: COL.contact }).stroke({ color: COL.contactBorder, width: 1.5 })
-      token.addChild(g)
+    const fillColor   = isAllied ? COL.allied    : COL.japanese
+    const borderColor = isAllied ? COL.alliedBorder : COL.japaneseBorder
+    const labelColor  = isAllied ? COL.labelAllied  : COL.labelJapanese
 
-      const lbl = new Text({ text: '?', style: { fill: COL.labelContact, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' } })
-      lbl.anchor.set(0.5, 0.5)
-      token.addChild(lbl)
-    } else {
-      // Known unit — circle
-      const fillColor = isAllied ? COL.allied : COL.japanese
-      const borderColor = isAllied ? COL.alliedBorder : COL.japaneseBorder
-      const labelColor = isAllied ? COL.labelAllied : COL.labelJapanese
+    // Square token — half-size S gives a 2S × 2S square matching ~radius-13 circle area
+    const S = 11
+    const g = new Graphics()
+    g.rect(-S, -S, S * 2, S * 2)
+      .fill({ color: fillColor })
+      .stroke({ color: borderColor, width: 1.5 })
+    token.addChild(g)
 
-      const g = new Graphics()
-      g.circle(0, 0, 13).fill({ color: fillColor }).stroke({ color: borderColor, width: 1.5 })
-      token.addChild(g)
-
-      // Carrier indicator — white dot inside if TG has a carrier
-      const ships = forcesStore.shipsInGroup(tg.id)
-      const hasCarrier = ships.some(s => {
-        const sc = gameStore.engine?.['state']?.shipClasses?.get(s.classId)
-        return sc?.type?.includes('carrier')
-      })
-      if (hasCarrier) {
-        const dot = new Graphics()
-        dot.circle(0, 0, 4).fill({ color: 0xffffff, alpha: 0.8 })
-        token.addChild(dot)
-      }
-
-      const name = tg.name.length > 6 ? tg.name.slice(0, 6) : tg.name
-      const lbl = new Text({ text: name, style: { fill: labelColor, fontSize: 9, fontFamily: 'sans-serif' } })
-      lbl.anchor.set(0.5, 2.2)
-      token.addChild(lbl)
+    // Carrier indicator — small white diamond inside the square
+    const ships = forcesStore.shipsInGroup(tg.id)
+    const hasCarrier = ships.some(s => {
+      const sc = gameStore.engine?.['state']?.shipClasses?.get(s.classId)
+      return sc?.type?.includes('carrier')
+    })
+    if (hasCarrier) {
+      const dot = new Graphics()
+      dot.circle(0, 0, 4).fill({ color: 0xffffff, alpha: 0.8 })
+      token.addChild(dot)
     }
+
+    // Label: show '?' for unconfirmed contacts, abbreviated name otherwise
+    const labelText = isContact && !isAllied ? '?' : (tg.name.length > 6 ? tg.name.slice(0, 6) : tg.name)
+    const lbl = new Text({ text: labelText, style: { fill: labelColor, fontSize: 9, fontFamily: 'sans-serif' } })
+    lbl.anchor.set(0.5, 2.2)
+    token.addChild(lbl)
 
     // Pointer events
     token.eventMode = 'static'
@@ -352,6 +359,71 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     token.y = px.y
 
     return token
+  }
+
+  // ── Range rings ───────────────────────────────────────────────────────────
+
+  /** Best search range (NM) achievable by any squadron in this task group. */
+  function getBestSearchRangeNm(tgId: string): number {
+    let best = 0
+    for (const sq of forcesStore.squadrons.values()) {
+      if (sq.taskGroupId !== tgId || sq.deckStatus === 'destroyed' || sq.aircraftCount === 0) continue
+      const ac = AIRCRAFT_TYPES.find(a => a.id === sq.aircraftTypeId)
+      if (!ac) continue
+      const r = (ac.role === 'scout' || ac.role === 'patrol-bomber') ? ac.maxRange : ac.maxRange * 0.45
+      if (r > best) best = r
+    }
+    return best
+  }
+
+  /** One-way strike range (NM) for the longest-legged attack aircraft in this task group. */
+  function getBestStrikeRangeNm(tgId: string): number {
+    let best = 0
+    for (const sq of forcesStore.squadrons.values()) {
+      if (sq.taskGroupId !== tgId || sq.deckStatus === 'destroyed' || sq.aircraftCount === 0) continue
+      const ac = AIRCRAFT_TYPES.find(a => a.id === sq.aircraftTypeId)
+      if (!ac || ac.role === 'fighter') continue
+      // maxRange × 0.5 (round-trip) × 0.85 (fuel reserve) — same as AirOpsSystem
+      const r = ac.maxRange * 0.5 * 0.85
+      if (r > best) best = r
+    }
+    return best
+  }
+
+  function drawRangeRings(tgs: Map<string, TaskGroup>): void {
+    rangeRingLayer.clear()
+    const nmToPx = getHexSize() / NM_PER_HEX
+
+    for (const tg of tgs.values()) {
+      const isAllied = tg.side === 'allied'
+      let px: { x: number; y: number }
+
+      if (!isAllied) {
+        // Only draw for confirmed contacts (visible to player)
+        const contact = getContactForTG(tg.id)
+        if (!contact) continue
+        px = hexToPixel(contact.lastKnownHex)
+      } else {
+        px = hexToPixel(tg.position)
+      }
+
+      const searchColor = isAllied ? COL.allied    : COL.japanese
+      const strikeColor = isAllied ? COL.rangeStrike : COL.rangeStrike
+
+      const searchNm = getBestSearchRangeNm(tg.id)
+      const strikeNm = getBestStrikeRangeNm(tg.id)
+
+      if (searchNm > 0) {
+        rangeRingLayer
+          .circle(px.x, px.y, searchNm * nmToPx)
+          .stroke({ color: searchColor, width: 1, alpha: 0.18 })
+      }
+      if (strikeNm > 0) {
+        rangeRingLayer
+          .circle(px.x, px.y, strikeNm * nmToPx)
+          .stroke({ color: strikeColor, width: 1.5, alpha: 0.14 })
+      }
+    }
   }
 
   // ── Ticker: smooth interpolation ──────────────────────────────────────────
@@ -379,12 +451,12 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     // ── Selection rings ───────────────────────────────────────────────────
     selectionLayer.clear()
 
-    // Task group selection ring + destination marker
+    // Task group selection ring + destination marker + highlighted range rings
     const selId = mapStore.selectedTaskGroupId
     if (selId) {
       const token = unitTokens.get(selId)
       if (token) {
-        selectionLayer.circle(token.x, token.y, 18).stroke({ color: COL.selection, width: 2, alpha: 0.9 })
+        selectionLayer.circle(token.x, token.y, 20).stroke({ color: COL.selection, width: 2, alpha: 0.9 })
 
         const tg = forcesStore.taskGroups.get(selId)
         if (tg?.destination) {
@@ -394,6 +466,21 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
             .moveTo(dest.x - r, dest.y - r).lineTo(dest.x + r, dest.y + r)
             .moveTo(dest.x + r, dest.y - r).lineTo(dest.x - r, dest.y + r)
             .stroke({ color: COL.selection, width: 2, alpha: 0.75 })
+        }
+
+        // Highlighted range rings for selected unit
+        const nmToPx = getHexSize() / NM_PER_HEX
+        const searchNm = getBestSearchRangeNm(selId)
+        const strikeNm = getBestStrikeRangeNm(selId)
+        if (searchNm > 0) {
+          selectionLayer
+            .circle(token.x, token.y, searchNm * nmToPx)
+            .stroke({ color: 0xffff44, width: 1.5, alpha: 0.65 })
+        }
+        if (strikeNm > 0) {
+          selectionLayer
+            .circle(token.x, token.y, strikeNm * nmToPx)
+            .stroke({ color: 0xffaa22, width: 2, alpha: 0.55 })
         }
       }
     }
@@ -408,6 +495,22 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
           .circle(dotToken.x, dotToken.y, 10 * pulse)
           .stroke({ color: 0xffffff, width: 2, alpha: 0.9 })
       }
+    }
+
+    // Range rings for all in-flight squadron dots
+    const nmToPx = getHexSize() / NM_PER_HEX
+    for (const [planId, dotToken] of strikeDotTokens) {
+      const plan = forcesStore.flightPlans.get(planId)
+      if (!plan) continue
+      const sq = forcesStore.squadrons.get(plan.squadronIds[0] ?? '')
+      if (!sq) continue
+      const ac = AIRCRAFT_TYPES.find(a => a.id === sq.aircraftTypeId)
+      if (!ac) continue
+      const rangeNm = ac.maxRange * 0.5 * 0.85
+      const color = plan.side === 'allied' ? COL.allied : COL.japanese
+      selectionLayer
+        .circle(dotToken.x, dotToken.y, rangeNm * nmToPx)
+        .stroke({ color, width: 1.5, alpha: 0.35 })
     }
   }
 
@@ -521,7 +624,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
     // Transparent hit area larger than the visual (easier to click)
     const hit = new Graphics()
-    hit.circle(0, 0, 12).fill({ color: 0x000000, alpha: 0.001 })
+    hit.circle(0, 0, 16).fill({ color: 0x000000, alpha: 0.001 })
     container.addChild(hit)
 
     container.eventMode = 'static'
@@ -619,15 +722,26 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       dotToken.y = dotPos.y
 
       // Redraw visual dot (index 0) to reflect current status / selection
-      const isOutbound = plan.status === 'airborne' || plan.status === 'inbound'
       const isSelected = mapStore.selectedFlightPlanId === plan.id
+      const isReturning = plan.status === 'returning'
+      const sideColor = plan.side === 'allied' ? COL.allied : COL.japanese
+      const dotColor = isReturning ? 0xaaaaaa : sideColor
+      const isScout = plan.mission === 'search'
       const g = dotToken.getChildAt(0) as Graphics
       g.clear()
       if (isSelected) {
-        g.circle(0, 0, 7).fill({ color: 0xffffff, alpha: 1 }).stroke({ color: COL.selection, width: 2, alpha: 1 })
+        g.circle(0, 0, 9).fill({ color: 0xffffff, alpha: 1 }).stroke({ color: COL.selection, width: 2, alpha: 1 })
+      } else if (isScout) {
+        // Triangle for scout/search missions
+        const R = 7
+        g.poly([0, -R, R * 0.866, R * 0.5, -R * 0.866, R * 0.5])
+          .fill({ color: dotColor, alpha: isReturning ? 0.6 : 0.9 })
+          .stroke({ color: 0xffffff, width: 1, alpha: 0.5 })
       } else {
-        const fillColor = isOutbound ? COL.flightPath : 0xaaaaaa
-        g.circle(0, 0, 5).fill({ color: fillColor, alpha: 0.95 }).stroke({ color: 0xffffff, width: 1, alpha: 0.6 })
+        // Circle for strike missions
+        g.circle(0, 0, 7)
+          .fill({ color: dotColor, alpha: isReturning ? 0.6 : 0.95 })
+          .stroke({ color: 0xffffff, width: 1, alpha: 0.6 })
       }
     }
 
@@ -656,6 +770,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       unitTokens.clear()
       prevPos.clear()
       currPos.clear()
+      rangeRingLayer.clear()
       flightPathLayer.clear()
       strikeDotLayer.removeChildren()
       strikeDotTokens.clear()

@@ -11,7 +11,7 @@ export const STEP_MINUTES = 30
  * A full 30-min step fires every 30 real seconds at 1×.
  * At 4×: fires every 7.5 real seconds. At 8×: every 3.75 seconds.
  */
-export const MS_PER_SIM_MINUTE_AT_1X = 100
+export const MS_PER_SIM_MINUTE_AT_1X = 130
 
 export type TimeScale = 1 | 2 | 4 | 8
 

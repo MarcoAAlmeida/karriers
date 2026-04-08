@@ -38,63 +38,6 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 # Gameplay Sprints
 
-## Sprint 14 — Clickable In-Flight Squadrons
-
-**Goal:** Players can inspect any moving squadron, not just carrier groups.
-
-- In-flight squadron dots are currently display-only. Make them interactive.
-- Click on any moving strike or scout dot on the map → opens the per-strike detail popup (from Sprint 16).
-- Hover tooltip: squadron name, mission, target, ETA.
-- Selection highlight: clicked squadron dot pulses or changes color while popup is open.
-- Ensure hit-testing works correctly when multiple dots overlap (z-order picker or small disambiguation menu).
-- Tests: click on a strike dot opens correct popup, hover shows tooltip, disambiguation works with overlapping dots.
-
-## Sprint 15 — Ranges & Icons
-
-**Goal:** represent detection and engagement ranges for each unit, and normalize icons
-
-a bit of polish to make further sprints more intuitive and visually clear:
-
-- make it easier to click on a squadron, as it´s hard to click on a small dot when its moving across the screen
-- Add range rings around each unit: search range for carriers, strike range for planes, detection range for scouts. Color-code by team (red for IJN, blue for US).
-- teams are red and blue, incidentally IJN and US
-- use red squares for IJN carrier groups, and blue squares for US
-- use red circles for IJN squadrons, and blue circles for US
-- use red triangles for IJN scouts, and blue triangles for US
-- sunk carriers are red ✕ diamonds, for both sides
-- just one icon per map position, if multiple units occupy the same hex, here is the order sunk > group > contact (meaning if sunk, all I see is the red X))
-- use red dot for IJN squadrons, and blue dots for US
-
-## Sprint 16 — Enemy AI (Japanese Strike Operations)
-
-**Goal:** Japan plays back. The game has no tension until the enemy acts.
-
-- Implement a `JapaneseAI` controller that issues orders each game step on behalf of all Japanese task forces.
-- Initial AI behavior (rule-based heuristic):
-  - Detects Allied TFs within search range using existing `SearchSystem`.
-  - Launches strike waves toward the nearest detected Allied carrier/TF.
-  - Returns planes and re-arms before launching follow-up strikes.
-  - Moves TFs to close distance when no target is in range.
-- Wire AI controller into the game loop (runs after player orders, before simulation step).
-- Tune aggression so Midway feels historically plausible but beatable.
-- Add tests: AI launches at least one strike per scenario, AI does not crash when no targets are visible.
-
----
-
-## Sprint 17 — Scout / Reconnaissance Missions
-
-**Goal:** Both sides can send scouts. Detection creates tension and drives decisions.
-
-- Add `MissionType.Scout` alongside existing strike missions.
-- Scout squadrons fly a search pattern over a target hex area; if an enemy TF is within their search radius, it becomes a confirmed contact.
-- Player UI: scout assignment in the Air Ops modal (select squadron → Scout → target hex).
-- Japanese AI schedules scout missions before committing to strikes (mirrors historical doctrine).
-- Contacts discovered by scouts are time-stamped and fade if not re-confirmed (existing FoW rules apply).
-- Distinguish scout contact markers visually from unconfirmed radar contacts (different icon or color dot).
-- Tests: scout mission completes, contact revealed, FoW updated correctly.
-
----
-
 ## Sprint 18 — CAP (Combat Air Patrol) Missions
 
 **Goal:** Defending carriers can intercept incoming strikes. Defense matters.
@@ -118,6 +61,24 @@ a bit of polish to make further sprints more intuitive and visually clear:
 - If the player has idle fighters and no CAP assigned, the alert prompts with a suggested CAP assignment.
 - Japanese AI responds symmetrically: scrambles CAP if Allied strike is detected inbound.
 - Tests: warning fires correctly, CAP can be assigned from the alert, no double-alerts per wave.
+
+
+
+## Sprint 20 — Scout / Reconnaissance Missions
+
+**Goal:** Both sides can send scouts. Detection creates tension and drives decisions.
+
+- Add `MissionType.Scout` alongside existing strike missions.
+- Scout squadrons fly a search pattern over a target hex area; if an enemy TF is within their search radius, it becomes a confirmed contact.
+- Player UI: scout assignment in the Air Ops modal (select squadron → Scout → target hex).
+- Japanese AI schedules scout missions before committing to strikes (mirrors historical doctrine).
+- Contacts discovered by scouts are time-stamped and fade if not re-confirmed (existing FoW rules apply).
+- Distinguish scout contact markers visually from unconfirmed radar contacts (different icon or color dot).
+- Tests: scout mission completes, contact revealed, FoW updated correctly.
+
+---
+
+
 
 ---
 
