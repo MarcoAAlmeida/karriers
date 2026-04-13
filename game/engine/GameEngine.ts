@@ -5,7 +5,9 @@ import type {
   Squadron,
   FlightPlan,
   ContactRecord,
+  ContactType,
   HexCell,
+  HexCoord,
   CombatEvent,
   GameEvent,
   Side,
@@ -16,6 +18,7 @@ import type {
   VictoryCondition
 } from '../types'
 import type { TerrainMap } from '../utils/pathfinding'
+import { hexDistance } from '../utils/hexMath'
 import type { TimeScale } from './TimeSystem'
 import { TimeSystem } from './TimeSystem'
 import { MovementSystem } from './MovementSystem'
@@ -86,6 +89,10 @@ export interface EngineEvents {
   ShipDamaged: CombatEvent
   ShipSunk: { shipId: string; taskGroupId: string; side: Side; time: GameTime }
   StrikeInbound: { flightPlanId: string; targetTaskGroupId: string; time: GameTime }
+  /** Fires when a Japanese strike is launched — Allied player should be warned. */
+  EnemyStrikeDetected: { flightPlanId: string; targetHex: HexCoord; estimatedArrivalTime: GameTime }
+  /** Fires when a scout mission resolves at its target hex. */
+  ScoutContactRevealed: { flightPlanId: string; targetHex: HexCoord; contactFound: boolean; side: Side; time: GameTime }
   ScenarioEnded: { winner: Side | 'draw'; time: GameTime; alliedPoints: number; japanesePoints: number }
 }
 
@@ -98,6 +105,7 @@ export type OrderPayload =
   | { type: 'launch-strike'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number } }
   | { type: 'launch-cap'; taskGroupId: string; squadronIds: string[] }
   | { type: 'launch-search'; taskGroupId: string; squadronIds: string[]; searchSector: number }
+  | { type: 'launch-scout'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number } }
   | { type: 'recall-mission'; flightPlanId: string }
 
 // ── GameEngine ─────────────────────────────────────────────────────────────
@@ -202,6 +210,16 @@ export class GameEngine {
         this.airOpsSystem.queueLaunch(order)
         break
       }
+      case 'launch-scout': {
+        const order: LaunchOrder = {
+          taskGroupId: payload.taskGroupId,
+          squadronIds: payload.squadronIds,
+          mission: 'scout',
+          targetHex: payload.targetHex
+        }
+        this.airOpsSystem.queueLaunch(order)
+        break
+      }
       case 'recall-mission':
         this.airOpsSystem.recallMission(payload.flightPlanId, this.state.flightPlans, this.timeSystem.currentTime)
         break
@@ -300,7 +318,60 @@ export class GameEngine {
           flightPlanId: plan.id,
           at: currentTime
         })
+        // Sprint 19: warn Allied side when Japanese strike launches
+        if (plan.side === 'japanese' && plan.targetHex) {
+          this.events.emit('EnemyStrikeDetected', {
+            flightPlanId: plan.id,
+            targetHex: plan.targetHex,
+            estimatedArrivalTime: plan.eta ?? currentTime
+          })
+        }
       }
+      if (plan.mission === 'cap') {
+        const sq = this.state.squadrons.get(plan.squadronIds[0] ?? '')
+        this.state.pendingCombatEvents.push({
+          type: 'cap-launched',
+          flightPlanId: plan.id,
+          taskGroupId: sq?.taskGroupId ?? '',
+          at: currentTime
+        })
+      }
+      if (plan.mission === 'scout' && plan.targetHex) {
+        this.state.pendingCombatEvents.push({
+          type: 'scout-launched',
+          flightPlanId: plan.id,
+          at: currentTime,
+          targetHex: plan.targetHex
+        })
+      }
+    }
+
+    // 4b. Scout arrivals — scouts that reached their target hex
+    const arrivedScouts = this.airOpsSystem.processScoutArrivals(this.state.flightPlans, currentTime)
+    for (const scoutPlan of arrivedScouts) {
+      const { event, contactFound, contact } = this.resolveScoutMission(scoutPlan, currentTime)
+      this.state.pendingCombatEvents.push(event)
+      if (contactFound && contact) {
+        const contactsMap = scoutPlan.side === 'allied'
+          ? this.state.alliedContacts
+          : this.state.japaneseContacts
+        // Update existing confirmed contact for this TG, or insert new
+        const existing = [...contactsMap.values()].find(c => c.confirmedTaskGroupId === contact.confirmedTaskGroupId)
+        if (existing) {
+          existing.lastKnownHex = contact.lastKnownHex
+          existing.lastSeenAt = currentTime
+          existing.isActive = true
+        } else {
+          contactsMap.set(contact.id, contact)
+        }
+      }
+      this.events.emit('ScoutContactRevealed', {
+        flightPlanId: scoutPlan.id,
+        targetHex: scoutPlan.targetHex!,
+        contactFound,
+        side: scoutPlan.side,
+        time: currentTime
+      })
     }
 
     // 5. Air combat — resolve strikes that have arrived
@@ -428,6 +499,58 @@ export class GameEngine {
     const event = { type: 'ship-sunk' as const, shipId, taskGroupId, side: ship.side, at: time, hex }
     this.state.pendingCombatEvents.push(event)
     this.events.emit('ShipSunk', { shipId, taskGroupId, side: ship.side, time })
+  }
+
+  // ── Scout resolution ──────────────────────────────────────────────────────
+
+  private resolveScoutMission(
+    plan: FlightPlan,
+    currentTime: GameTime
+  ): { event: CombatEvent; contactFound: boolean; contact?: ContactRecord } {
+    const targetHex = plan.targetHex ?? { q: 0, r: 0 }
+    const enemySide: Side = plan.side === 'allied' ? 'japanese' : 'allied'
+    const SCOUT_RADIUS_HEXES = 3
+
+    let foundTG: TaskGroup | undefined
+    let minDist = Infinity
+    for (const tg of this.state.taskGroups.values()) {
+      if (tg.side !== enemySide) continue
+      const dist = hexDistance(tg.position, targetHex)
+      if (dist <= SCOUT_RADIUS_HEXES && dist < minDist) {
+        foundTG = tg
+        minDist = dist
+      }
+    }
+
+    const event: CombatEvent = {
+      type: 'scout-resolved',
+      flightPlanId: plan.id,
+      at: currentTime,
+      contactFound: !!foundTG,
+      targetHex
+    }
+
+    if (!foundTG) return { event, contactFound: false }
+
+    const contactId = `c-scout-${plan.id}`
+    const contactType = this.inferContactType(foundTG)
+    const contact: ContactRecord = {
+      id: contactId,
+      forSide: plan.side,
+      lastKnownHex: { ...foundTG.position },
+      lastSeenAt: currentTime,
+      contactType,
+      isActive: true,
+      confirmedTaskGroupId: foundTG.id,
+      sightingIds: []
+    }
+    return { event, contactFound: true, contact }
+  }
+
+  private inferContactType(tg: TaskGroup): ContactType {
+    if (tg.currentOrder === 'search' || tg.currentOrder === 'strike') return 'carrier-force'
+    if (tg.currentOrder === 'patrol') return 'battleship-force'
+    return 'surface-force'
   }
 
   private maxSpeedFor(tg: TaskGroup): number {

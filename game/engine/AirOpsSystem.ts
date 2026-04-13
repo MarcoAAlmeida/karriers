@@ -81,6 +81,32 @@ export class AirOpsSystem {
     return newPlans
   }
 
+  // ── Scout arrivals ────────────────────────────────────────────────────────
+
+  /**
+   * Finds scout missions whose ETA has been reached and transitions them to
+   * 'returning'. Returns the plans so GameEngine can resolve contacts.
+   * Called after processStep() in GameEngine.runStep().
+   */
+  processScoutArrivals(
+    flightPlans: Map<string, FlightPlan>,
+    currentTime: GameTime
+  ): FlightPlan[] {
+    const nowMin = gameTimeToMinutes(currentTime)
+    const arrived: FlightPlan[] = []
+
+    for (const plan of flightPlans.values()) {
+      if (plan.mission !== 'scout') continue
+      if (plan.status !== 'airborne') continue
+      if (!plan.eta) continue
+      if (gameTimeToMinutes(plan.eta) > nowMin) continue
+
+      plan.status = 'returning'
+      arrived.push(plan)
+    }
+    return arrived
+  }
+
   // ── Recall ────────────────────────────────────────────────────────────────
 
   recallMission(flightPlanId: string, flightPlans: Map<string, FlightPlan>, currentTime: GameTime): void {
@@ -108,13 +134,16 @@ export class AirOpsSystem {
       if (sq.deckStatus === 'destroyed') continue
       if (sq.aircraftCount === 0) continue
 
-      // Check range for strike/search missions
-      if (order.targetHex && order.mission !== 'cap') {
+      // Check range for strike/scout missions
+      if (order.targetHex && order.mission !== 'cap' && order.mission !== 'search') {
         const aircraft = this.aircraftTypes.get(sq.aircraftTypeId)
         if (aircraft) {
           const distNm = hexDistance(carrierPosition, order.targetHex) * NM_PER_HEX
-          const maxStrikeRange = aircraft.maxRange * 0.5 * (1 - FUEL_RESERVE)
-          if (distNm > maxStrikeRange) continue  // out of range
+          // Scouts use full range; strikers use 50% round-trip with fuel reserve
+          const maxRange = order.mission === 'scout'
+            ? aircraft.maxRange * 0.5   // scouts also need to return
+            : aircraft.maxRange * 0.5 * (1 - FUEL_RESERVE)
+          if (distNm > maxRange) continue  // out of range
         }
       }
 

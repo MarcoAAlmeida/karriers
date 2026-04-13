@@ -188,6 +188,44 @@ function combatEntry(e: CombatEvent, idx: number): EventEntry | null {
       textClass: 'text-red-400 font-semibold'
     }
   }
+  if (e.type === 'cap-launched') {
+    const tg = forcesStore.taskGroups.get(e.taskGroupId)
+    const tgName = tg?.name ?? 'unknown force'
+    return {
+      id: `c-cap-${e.flightPlanId}`,
+      time: formatTime(e.at),
+      text: `CAP over ${tgName}`,
+      sortKey: timeKey(e.at),
+      dotClass: 'bg-green-500',
+      textClass: 'text-green-300'
+    }
+  }
+  if (e.type === 'scout-launched') {
+    const plan = forcesStore.flightPlans.get(e.flightPlanId)
+    const sq = forcesStore.squadrons.get(plan?.squadronIds[0] ?? '')
+    const tgName = sq ? (forcesStore.taskGroups.get(sq.taskGroupId)?.name ?? '') : ''
+    const from = tgName ? ` from ${tgName}` : ''
+    return {
+      id: `c-scl-${e.flightPlanId}`,
+      time: formatTime(e.at),
+      text: `Scout${from} → (${e.targetHex.q}, ${e.targetHex.r})`,
+      sortKey: timeKey(e.at),
+      dotClass: 'bg-teal-400',
+      textClass: 'text-teal-300'
+    }
+  }
+  if (e.type === 'scout-resolved') {
+    return {
+      id: `c-scr-${e.flightPlanId}`,
+      time: formatTime(e.at),
+      text: e.contactFound
+        ? `Scout: contact confirmed at (${e.targetHex.q}, ${e.targetHex.r})`
+        : `Scout: no contact at (${e.targetHex.q}, ${e.targetHex.r})`,
+      sortKey: timeKey(e.at),
+      dotClass: e.contactFound ? 'bg-teal-500' : 'bg-slate-500',
+      textClass: e.contactFound ? 'text-teal-200' : 'text-slate-400'
+    }
+  }
   return null
 }
 

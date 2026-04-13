@@ -1,5 +1,5 @@
 import type { GameSnapshot, OrderPayload } from './GameEngine'
-import type { Squadron } from '../types'
+import type { Squadron, TaskGroup } from '../types'
 import { hexDistance, NM_PER_HEX } from '../utils/hexMath'
 import { AIRCRAFT_TYPES } from '../data/aircraftTypes'
 
@@ -13,6 +13,9 @@ const MAX_STRIKE_RANGE_FACTOR = 0.5 * 0.85
 
 /** Aircraft roles that can execute strike missions. */
 const ATTACK_ROLES = new Set(['dive-bomber', 'torpedo-bomber'])
+
+/** Radius (hexes) within which we consider a TF to be the strike target. */
+const TARGET_PROXIMITY_HEXES = 2
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -35,10 +38,12 @@ function contactScore(
  * and executed at the start of the next step.
  *
  * Behaviour summary:
- *  1. No contacts → switch to 'search' so SearchSystem generates sightings.
- *  2. Contact found + attack squadrons ready + no strike airborne → launch.
- *  3. Contact out of range → close distance and keep searching.
- *  4. Strike already airborne → wait; do not relaunch until planes recover.
+ *  1. No contacts + no active scout → launch scout toward enemy area.
+ *  2. No contacts (scout active or just searching) → switch to 'search' order.
+ *  3. Allied strike inbound + no CAP → launch fighter CAP.
+ *  4. Contact found + attack squadrons ready + no strike airborne → launch strike.
+ *  5. Contact out of range → close distance and keep searching.
+ *  6. Strike already airborne → wait; do not relaunch until planes recover.
  */
 export class JapaneseAI {
   step(
@@ -56,14 +61,41 @@ export class JapaneseAI {
 
       const strikeActive = this.hasActiveStrike(tg.id, snapshot)
 
-      // ── No contacts: search until we find something ──────────────────────
+      // ── Sprint 18/19: CAP defense when Allied strike inbound ─────────────
+      const alliedStrikeInbound = this.hasInboundStrikeToward(tg, snapshot)
+      if (alliedStrikeInbound && !this.hasActiveCAP(tg.id, snapshot)) {
+        const fighters = this.getFighterSquadrons(tg.id, snapshot)
+        if (fighters.length > 0) {
+          issueOrder({
+            type: 'launch-cap',
+            taskGroupId: tg.id,
+            squadronIds: fighters.map(sq => sq.id)
+          })
+        }
+      }
+
+      // ── No contacts ──────────────────────────────────────────────────────
       if (activeContacts.length === 0) {
+        // Sprint 20: launch scout before committing to strikes
+        if (!this.hasActiveScout(tg.id, snapshot)) {
+          const scouts = this.getScoutSquadrons(tg.id, snapshot)
+          if (scouts.length > 0) {
+            const scoutTarget = this.pickScoutTarget(tg, snapshot)
+            issueOrder({
+              type: 'launch-scout',
+              taskGroupId: tg.id,
+              squadronIds: [scouts[0]!.id],
+              targetHex: scoutTarget
+            })
+          }
+        }
+
         if (tg.currentOrder !== 'search') {
           issueOrder({
             type: 'set-order',
             taskGroupId: tg.id,
             order: 'search',
-            destination: tg.destination   // preserve advance toward objective
+            destination: tg.destination
           })
         }
         continue
@@ -143,6 +175,26 @@ export class JapaneseAI {
     })
   }
 
+  /** Fighter squadrons that are hangared and ready. */
+  private getFighterSquadrons(tgId: string, snapshot: GameSnapshot): Squadron[] {
+    return [...snapshot.squadrons.values()].filter(sq => {
+      if (sq.taskGroupId !== tgId || sq.side !== 'japanese') return false
+      if (sq.deckStatus !== 'hangared' || sq.aircraftCount === 0) return false
+      const ac = AIRCRAFT_TYPES.find(a => a.id === sq.aircraftTypeId)
+      return ac?.role === 'fighter'
+    })
+  }
+
+  /** Scout/patrol-bomber squadrons that are hangared and ready. */
+  private getScoutSquadrons(tgId: string, snapshot: GameSnapshot): Squadron[] {
+    return [...snapshot.squadrons.values()].filter(sq => {
+      if (sq.taskGroupId !== tgId || sq.side !== 'japanese') return false
+      if (sq.deckStatus !== 'hangared' || sq.aircraftCount === 0) return false
+      const ac = AIRCRAFT_TYPES.find(a => a.id === sq.aircraftTypeId)
+      return ac?.role === 'scout' || ac?.role === 'patrol-bomber'
+    })
+  }
+
   /** True if a strike from this TF's squadrons is currently airborne/inbound. */
   private hasActiveStrike(tgId: string, snapshot: GameSnapshot): boolean {
     const tgSqIds = new Set(
@@ -156,5 +208,69 @@ export class JapaneseAI {
       (fp.status === 'airborne' || fp.status === 'inbound') &&
       fp.squadronIds.some(id => tgSqIds.has(id))
     )
+  }
+
+  /** True if this TG already has CAP airborne. */
+  private hasActiveCAP(tgId: string, snapshot: GameSnapshot): boolean {
+    const tgSqIds = new Set(
+      [...snapshot.squadrons.values()]
+        .filter(sq => sq.taskGroupId === tgId)
+        .map(sq => sq.id)
+    )
+    return [...snapshot.flightPlans.values()].some(fp =>
+      fp.side === 'japanese' &&
+      fp.mission === 'cap' &&
+      fp.status === 'airborne' &&
+      fp.squadronIds.some(id => tgSqIds.has(id))
+    )
+  }
+
+  /** True if a scout from this TG is currently airborne. */
+  private hasActiveScout(tgId: string, snapshot: GameSnapshot): boolean {
+    const tgSqIds = new Set(
+      [...snapshot.squadrons.values()]
+        .filter(sq => sq.taskGroupId === tgId)
+        .map(sq => sq.id)
+    )
+    return [...snapshot.flightPlans.values()].some(fp =>
+      fp.side === 'japanese' &&
+      fp.mission === 'scout' &&
+      fp.status === 'airborne' &&
+      fp.squadronIds.some(id => tgSqIds.has(id))
+    )
+  }
+
+  /**
+   * True if an Allied strike is airborne and heading toward this TG's hex.
+   * Uses TARGET_PROXIMITY_HEXES tolerance since the strike targets a contact
+   * position, not the exact current TG hex.
+   */
+  private hasInboundStrikeToward(tg: TaskGroup, snapshot: GameSnapshot): boolean {
+    return [...snapshot.flightPlans.values()].some(fp =>
+      fp.side === 'allied' &&
+      fp.mission === 'strike' &&
+      (fp.status === 'airborne' || fp.status === 'inbound') &&
+      fp.targetHex !== undefined &&
+      hexDistance(fp.targetHex, tg.position) <= TARGET_PROXIMITY_HEXES
+    )
+  }
+
+  /**
+   * Pick a scout target hex.
+   * Tries the midpoint between current TG position and destination if set;
+   * otherwise scouts 12 hexes ahead along the TG's expected axis of advance.
+   */
+  private pickScoutTarget(tg: TaskGroup, _snapshot: GameSnapshot): { q: number; r: number } {
+    if (tg.destination) {
+      return {
+        q: Math.round((tg.position.q + tg.destination.q) / 2),
+        r: Math.round((tg.position.r + tg.destination.r) / 2)
+      }
+    }
+    // Default: scout toward Allied TF operating area (NE of Midway)
+    return {
+      q: Math.min(tg.position.q + 12, 70),
+      r: Math.max(tg.position.r - 4, 0)
+    }
   }
 }

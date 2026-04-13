@@ -63,3 +63,6 @@ export type CombatEvent =
   | { type: 'ship-sunk'; shipId: string; taskGroupId: string; side: Side; at: GameTime; hex: HexCoord }
   | { type: 'fire-controlled'; shipId: string; at: GameTime }
   | { type: 'fire-out-of-control'; shipId: string; at: GameTime }
+  | { type: 'cap-launched'; flightPlanId: string; taskGroupId: string; at: GameTime }
+  | { type: 'scout-launched'; flightPlanId: string; at: GameTime; targetHex: HexCoord }
+  | { type: 'scout-resolved'; flightPlanId: string; at: GameTime; contactFound: boolean; targetHex: HexCoord }

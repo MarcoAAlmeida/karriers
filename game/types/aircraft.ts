@@ -10,7 +10,7 @@ export type DeckStatus = 'hangared' | 'spotted' | 'airborne' | 'recovering' | 'r
 
 export type OrdnanceType = 'none' | 'bombs-ap' | 'bombs-gp' | 'torpedoes' | 'depth-charges'
 
-export type MissionType = 'strike' | 'search' | 'cap' | 'asw' | 'intercept' | 'escort'
+export type MissionType = 'strike' | 'search' | 'cap' | 'scout' | 'asw' | 'intercept' | 'escort'
 
 export type FlightStatus = 'planned' | 'airborne' | 'inbound' | 'returning' | 'recovered' | 'lost'
 

@@ -2,7 +2,7 @@
   <UModal v-model:open="open" title="Air Operations" :ui="{ width: 'sm:max-w-xl' }">
     <template #content>
       <div class="p-4">
-        <UTabs :items="tabs" class="w-full">
+        <UTabs v-model="activeTab" :items="tabs" class="w-full">
 
           <!-- Deck Status tab -->
           <template #deck>
@@ -61,20 +61,55 @@
 
           <!-- CAP tab -->
           <template #cap>
-            <div class="mt-3 space-y-1">
-              <div v-if="!capSquadrons.length" class="text-sm text-gray-500 text-center py-4">
-                No CAP assigned. Select a fighter squadron and issue a CAP order.
-              </div>
-              <div
-                v-for="sq in capSquadrons"
-                :key="sq.id"
-                class="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-900 text-sm"
-              >
-                <div class="flex-1 min-w-0">
-                  <p class="text-white font-medium">{{ sq.name }}</p>
-                  <p class="text-gray-500 text-xs">{{ sq.aircraftCount }} aircraft on CAP</p>
+            <div class="mt-3 space-y-4">
+
+              <!-- Active CAP -->
+              <div v-if="activeCAPSquadrons.length">
+                <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Active CAP</p>
+                <div
+                  v-for="sq in activeCAPSquadrons"
+                  :key="sq.id"
+                  class="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-900 text-sm"
+                >
+                  <div class="flex-1 min-w-0">
+                    <p class="text-white font-medium">{{ sq.name }}</p>
+                    <p class="text-gray-500 text-xs">{{ sq.aircraftCount }} aircraft on CAP</p>
+                  </div>
+                  <UBadge color="success" variant="subtle" size="sm">airborne</UBadge>
                 </div>
               </div>
+
+              <!-- Launch CAP -->
+              <div>
+                <p class="text-xs text-gray-400 uppercase tracking-wide mb-2">Launch Fighters</p>
+                <div v-if="!availableForCAP.length" class="text-sm text-gray-500 text-center py-2">
+                  No fighter squadrons available (must be hangared).
+                </div>
+                <div
+                  v-for="sq in availableForCAP"
+                  :key="sq.id"
+                  class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
+                  :class="capSelected.has(sq.id) ? 'bg-green-900/40 ring-1 ring-green-500' : 'bg-gray-900 hover:bg-gray-800'"
+                  @click="toggleCAPSquadron(sq.id)"
+                >
+                  <div class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
+                    :class="capSelected.has(sq.id) ? 'bg-green-500 border-green-500' : 'border-gray-600'">
+                    <span v-if="capSelected.has(sq.id)" class="text-white text-xs leading-none">✓</span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-white font-medium truncate">{{ sq.name }}</p>
+                    <p class="text-gray-500 text-xs">{{ sq.aircraftCount }} ac · {{ sq.pilotExperience }} · {{ aircraftTypeName(sq.aircraftTypeId) }}</p>
+                  </div>
+                </div>
+              </div>
+
+              <UButton
+                label="Launch CAP"
+                color="success"
+                block
+                :disabled="capSelected.size === 0"
+                @click="launchCAP"
+              />
             </div>
           </template>
 
@@ -173,6 +208,73 @@
             </div>
           </template>
 
+          <!-- Scout tab -->
+          <template #scout>
+            <div class="mt-3 space-y-4">
+
+              <!-- Squadron selection -->
+              <div>
+                <p class="text-xs text-gray-400 uppercase tracking-wide mb-2">Select Scout</p>
+                <div v-if="!availableForScout.length" class="text-sm text-gray-500 text-center py-2">
+                  No scout/patrol aircraft available.
+                </div>
+                <div
+                  v-for="sq in availableForScout"
+                  :key="sq.id"
+                  class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
+                  :class="scoutSelected.has(sq.id) ? 'bg-teal-900/40 ring-1 ring-teal-500' : 'bg-gray-900 hover:bg-gray-800'"
+                  @click="toggleScoutSquadron(sq.id)"
+                >
+                  <div class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
+                    :class="scoutSelected.has(sq.id) ? 'bg-teal-500 border-teal-500' : 'border-gray-600'">
+                    <span v-if="scoutSelected.has(sq.id)" class="text-white text-xs leading-none">✓</span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-white font-medium truncate">{{ sq.name }}</p>
+                    <p class="text-gray-500 text-xs">{{ sq.aircraftCount }} ac · {{ aircraftTypeName(sq.aircraftTypeId) }}</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Target hex -->
+              <div>
+                <p class="text-xs text-gray-400 mb-2 uppercase tracking-wide">Target Area</p>
+                <div v-if="contactOptions.length">
+                  <select
+                    v-model="scoutTargetContactId"
+                    class="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-500 mb-2"
+                  >
+                    <option value="">— Fly to known contact —</option>
+                    <option v-for="opt in contactOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                  </select>
+                </div>
+                <div class="flex gap-2 items-center">
+                  <span class="text-xs text-gray-500 flex-shrink-0">Manual hex:</span>
+                  <input
+                    v-model.number="scoutManualQ"
+                    type="number"
+                    placeholder="Q"
+                    class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                  <input
+                    v-model.number="scoutManualR"
+                    type="number"
+                    placeholder="R"
+                    class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+              </div>
+
+              <UButton
+                label="Launch Scout"
+                color="info"
+                block
+                :disabled="!canLaunchScout"
+                @click="launchScout"
+              />
+            </div>
+          </template>
+
         </UTabs>
       </div>
     </template>
@@ -185,7 +287,10 @@ import { AIRCRAFT_TYPES } from '@game/data/aircraftTypes'
 import { hexDistance } from '@game/utils/hexMath'
 
 const open = defineModel<boolean>('open', { default: false })
-const props = defineProps<{ taskGroupId: string | null }>()
+const props = defineProps<{
+  taskGroupId: string | null
+  initialTab?: string
+}>()
 
 const gameStore = useGameStore()
 const forcesStore = useForcesStore()
@@ -194,25 +299,35 @@ const intelStore = useIntelligenceStore()
 useModalPause(open)
 
 const tabs = [
-  { label: 'Deck Status', slot: 'deck' as const },
-  { label: 'Airborne',    slot: 'airborne' as const },
-  { label: 'CAP',         slot: 'cap' as const },
-  { label: 'Strike',      slot: 'strike' as const },
+  { label: 'Deck Status', slot: 'deck'    as const, value: 'deck' },
+  { label: 'Airborne',    slot: 'airborne' as const, value: 'airborne' },
+  { label: 'CAP',         slot: 'cap'     as const, value: 'cap' },
+  { label: 'Strike',      slot: 'strike'  as const, value: 'strike' },
+  { label: 'Scout',       slot: 'scout'   as const, value: 'scout' },
 ]
 
-// ── Strike tab state ──────────────────────────────────────────────────────
+// ── Active tab ────────────────────────────────────────────────────────────
 
-const strikeSelected = ref<Set<string>>(new Set())
-const strikeTargetContactId = ref<string>('')
-const manualQ = ref<number | null>(null)
-const manualR = ref<number | null>(null)
+const activeTab = ref<string>('deck')
 
-// Reset strike state when modal closes or TG changes
+watch(open, (isOpen) => {
+  if (isOpen) {
+    activeTab.value = props.initialTab ?? 'deck'
+  }
+})
+
+// ── Shared state reset ────────────────────────────────────────────────────
+
 watch([open, () => props.taskGroupId], () => {
   strikeSelected.value = new Set()
   strikeTargetContactId.value = ''
   manualQ.value = null
   manualR.value = null
+  capSelected.value = new Set()
+  scoutSelected.value = new Set()
+  scoutTargetContactId.value = ''
+  scoutManualQ.value = null
+  scoutManualR.value = null
 })
 
 // ── Shared computed ───────────────────────────────────────────────────────
@@ -229,9 +344,18 @@ const flightPlans = computed(() => {
   )
 })
 
-const capSquadrons = computed(() =>
-  squadrons.value.filter(sq => sq.currentMission?.mission === 'cap')
-)
+/** Active CAP squadrons for this TG — looks up via flight plans. */
+const activeCAPSquadrons = computed(() => {
+  const result: typeof squadrons.value = []
+  for (const fp of flightPlans.value) {
+    if (fp.mission !== 'cap' || fp.status !== 'airborne') continue
+    for (const sqId of fp.squadronIds) {
+      const sq = forcesStore.squadrons.get(sqId)
+      if (sq) result.push(sq)
+    }
+  }
+  return result
+})
 
 function deckStatusColor(status: DeckStatus): 'success' | 'warning' | 'error' | 'neutral' | 'info' {
   switch (status) {
@@ -258,20 +382,59 @@ function recallMission(flightPlanId: string): void {
   gameStore.issueOrder({ type: 'recall-mission', flightPlanId })
 }
 
-// ── Strike tab ────────────────────────────────────────────────────────────
-
-const availableForStrike = computed(() =>
-  squadrons.value.filter(sq =>
-    (sq.deckStatus === 'hangared' || sq.deckStatus === 'spotted') &&
-    !sq.currentMissionId
-  )
-)
+function aircraftTypeName(typeId: number): string {
+  return AIRCRAFT_TYPES.find(t => t.id === typeId)?.name ?? `type ${typeId}`
+}
 
 const contactOptions = computed(() =>
   intelStore.activeAlliedContacts.map(c => ({
     label: `${c.contactType} @ (${c.lastKnownHex.q}, ${c.lastKnownHex.r})`,
     value: c.id,
   }))
+)
+
+// ── CAP tab ───────────────────────────────────────────────────────────────
+
+const capSelected = ref<Set<string>>(new Set())
+
+const availableForCAP = computed(() =>
+  squadrons.value.filter(sq => {
+    if (sq.deckStatus !== 'hangared' || sq.aircraftCount === 0) return false
+    if (sq.currentMissionId) return false
+    const ac = AIRCRAFT_TYPES.find(t => t.id === sq.aircraftTypeId)
+    return ac?.role === 'fighter'
+  })
+)
+
+function toggleCAPSquadron(id: string): void {
+  const s = new Set(capSelected.value)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
+  capSelected.value = s
+}
+
+function launchCAP(): void {
+  if (capSelected.value.size === 0 || !props.taskGroupId) return
+  gameStore.issueOrder({
+    type: 'launch-cap',
+    taskGroupId: props.taskGroupId,
+    squadronIds: [...capSelected.value]
+  })
+  open.value = false
+}
+
+// ── Strike tab ────────────────────────────────────────────────────────────
+
+const strikeSelected = ref<Set<string>>(new Set())
+const strikeTargetContactId = ref<string>('')
+const manualQ = ref<number | null>(null)
+const manualR = ref<number | null>(null)
+
+const availableForStrike = computed(() =>
+  squadrons.value.filter(sq =>
+    (sq.deckStatus === 'hangared' || sq.deckStatus === 'spotted') &&
+    !sq.currentMissionId
+  )
 )
 
 const strikeTargetHex = computed((): { q: number; r: number } | null => {
@@ -316,10 +479,6 @@ function toggleStrikeSquadron(id: string): void {
   strikeSelected.value = s
 }
 
-function aircraftTypeName(typeId: number): string {
-  return AIRCRAFT_TYPES.find(t => t.id === typeId)?.name ?? `type ${typeId}`
-}
-
 const allSelected = computed(() =>
   availableForStrike.value.length > 0 &&
   availableForStrike.value.every(sq => strikeSelected.value.has(sq.id))
@@ -341,7 +500,55 @@ function launchStrike(): void {
     squadronIds: [...strikeSelected.value],
     targetHex: strikeTargetHex.value,
   })
-  // Close modal — useModalPause resumes the simulation automatically
+  open.value = false
+}
+
+// ── Scout tab ─────────────────────────────────────────────────────────────
+
+const scoutSelected = ref<Set<string>>(new Set())
+const scoutTargetContactId = ref<string>('')
+const scoutManualQ = ref<number | null>(null)
+const scoutManualR = ref<number | null>(null)
+
+const availableForScout = computed(() =>
+  squadrons.value.filter(sq => {
+    if (sq.deckStatus !== 'hangared' || sq.aircraftCount === 0) return false
+    if (sq.currentMissionId) return false
+    const ac = AIRCRAFT_TYPES.find(t => t.id === sq.aircraftTypeId)
+    return ac?.role === 'scout' || ac?.role === 'patrol-bomber'
+  })
+)
+
+function toggleScoutSquadron(id: string): void {
+  const s = new Set(scoutSelected.value)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
+  scoutSelected.value = s
+}
+
+const scoutTargetHex = computed((): { q: number; r: number } | null => {
+  if (scoutTargetContactId.value) {
+    const contact = intelStore.activeAlliedContacts.find(c => c.id === scoutTargetContactId.value)
+    if (contact) return contact.lastKnownHex
+  }
+  if (scoutManualQ.value !== null && scoutManualR.value !== null) {
+    return { q: scoutManualQ.value, r: scoutManualR.value }
+  }
+  return null
+})
+
+const canLaunchScout = computed(() =>
+  scoutSelected.value.size > 0 && scoutTargetHex.value !== null && !!props.taskGroupId
+)
+
+function launchScout(): void {
+  if (!canLaunchScout.value || !props.taskGroupId || !scoutTargetHex.value) return
+  gameStore.issueOrder({
+    type: 'launch-scout',
+    taskGroupId: props.taskGroupId,
+    squadronIds: [...scoutSelected.value],
+    targetHex: scoutTargetHex.value
+  })
   open.value = false
 }
 </script>

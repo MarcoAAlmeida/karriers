@@ -35,7 +35,11 @@
       "Bash(netstat -ano)",
       "Bash(taskkill:*)",
       "Bash(cmd:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "WebFetch(domain:hub.nuxt.com)",
+      "WebFetch(domain:www.reddit.com)",
+      "WebFetch(domain:nuxt.com)",
+      "WebFetch(domain:claude.com)"
     ]
   }
 }

@@ -62,6 +62,7 @@
   <MenusAirOpModal
     v-model:open="showAirOpsModal"
     :task-group-id="mapStore.selectedTaskGroupId"
+    :initial-tab="airOpsInitialTab"
   />
 </template>
 
@@ -103,11 +104,22 @@ const resultLine = computed(() => {
 const showOrderModal = ref(false)
 const showAirOpsModal = ref(false)
 const showCommandPalette = ref(false)
+const airOpsInitialTab = ref<string | undefined>(undefined)
 
 useModalPause(showCommandPalette)
 
 // ── Game event toasts ─────────────────────────────────────────────────────
-useGameEvents()
+const { onOpenCAP } = useGameEvents()
+onOpenCAP((taskGroupId) => {
+  mapStore.selectTaskGroup(taskGroupId)
+  airOpsInitialTab.value = 'cap'
+  showAirOpsModal.value = true
+})
+
+// Reset initialTab after modal closes so it doesn't re-apply on next open
+watch(showAirOpsModal, (open) => {
+  if (!open) airOpsInitialTab.value = undefined
+})
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────
 defineShortcuts({

@@ -61,6 +61,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
   let unitLayer: Container
   let flightPathLayer: Graphics
   let strikeDotLayer: Container
+  let capLayer: Graphics
   let selectionLayer: Graphics
   let annotationLayer: Container
 
@@ -121,10 +122,11 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     unitLayer       = new Container()
     flightPathLayer = new Graphics()
     strikeDotLayer  = new Container()
+    capLayer        = new Graphics()
     selectionLayer  = new Graphics()
     annotationLayer = new Container()
 
-    world.addChild(terrainLayer, gridLayer, rangeRingLayer, fogLayer, contactLayer, sunkMarkerLayer, unitLayer, flightPathLayer, strikeDotLayer, selectionLayer, annotationLayer)
+    world.addChild(terrainLayer, gridLayer, rangeRingLayer, fogLayer, contactLayer, sunkMarkerLayer, unitLayer, flightPathLayer, strikeDotLayer, capLayer, selectionLayer, annotationLayer)
 
     drawTerrain()
     drawGrid()
@@ -448,6 +450,9 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     // Animated strike dots — position + interactive tokens
     updateStrikeDots()
 
+    // CAP orbit rings
+    drawCAPRings()
+
     // ── Selection rings ───────────────────────────────────────────────────
     selectionLayer.clear()
 
@@ -611,6 +616,40 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     }
   }
 
+  // ── CAP orbit rings ───────────────────────────────────────────────────────
+
+  /**
+   * Draws small rotating dots orbiting each allied TF that has active CAP.
+   * Redrawn every tick for smooth animation.
+   */
+  function drawCAPRings(): void {
+    capLayer.clear()
+    const t = Date.now() / 1000   // seconds
+
+    for (const plan of forcesStore.flightPlans.values()) {
+      if (plan.mission !== 'cap' || plan.status !== 'airborne') continue
+
+      const sq = forcesStore.squadrons.get(plan.squadronIds[0] ?? '')
+      if (!sq) continue
+      const token = unitTokens.get(sq.taskGroupId)
+      if (!token) continue
+
+      const side = sq.side
+      const color = side === 'allied' ? 0x44aaff : 0xff7744
+      const orbitR = 26
+      const numDots = Math.min(plan.squadronIds.length * 2 + 2, 8)
+
+      for (let i = 0; i < numDots; i++) {
+        const angle = (i / numDots) * Math.PI * 2 + t * 1.0
+        const dx = Math.cos(angle) * orbitR
+        const dy = Math.sin(angle) * orbitR
+        capLayer
+          .circle(token.x + dx, token.y + dy, 2.5)
+          .fill({ color, alpha: 0.9 })
+      }
+    }
+  }
+
   // ── Animated strike dots ──────────────────────────────────────────────────
 
   /** Build an interactive Container for a single in-flight squadron dot. */
@@ -726,7 +765,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       const isReturning = plan.status === 'returning'
       const sideColor = plan.side === 'allied' ? COL.allied : COL.japanese
       const dotColor = isReturning ? 0xaaaaaa : sideColor
-      const isScout = plan.mission === 'search'
+      const isScout = plan.mission === 'search' || plan.mission === 'scout'
       const g = dotToken.getChildAt(0) as Graphics
       g.clear()
       if (isSelected) {
@@ -776,6 +815,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       strikeDotTokens.clear()
       planOriginPx.clear()
       selectionLayer.clear()
+      capLayer.clear()
       contactLayer.removeChildren()
       sunkMarkerLayer.removeChildren()
       mapStore.selectFlightPlan(null)
