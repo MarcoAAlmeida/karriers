@@ -4,18 +4,25 @@ Most recent sprint always on top.
 
 ---
 
-## Sprint 17 — Enemy AI (Japanese Strike Operations)
+## Sprint 17 — Enemy AI, CAP & Scout Missions
 
 **Goal:** Japan plays back. The game has no tension until the enemy acts.
 
 - Implement a `JapaneseAI` controller that issues orders each game step on behalf of all Japanese task forces.
 - Initial AI behavior (rule-based heuristic):
   - Detects Allied TFs within search range using existing `SearchSystem`.
+  - Launches scout missions before committing to strikes (`getScoutSquadrons()`).
   - Launches strike waves toward the nearest detected Allied carrier/TF.
   - Returns planes and re-arms before launching follow-up strikes.
+  - Launches CAP fighters when an Allied inbound strike is detected (`hasInboundStrikeToward()`).
   - Moves TFs to close distance when no target is in range.
 - Wire AI controller into the game loop (runs after player orders, before simulation step).
-- Tune aggression so Midway feels historically plausible but beatable.
+- **CAP missions** (`MissionType = 'cap'`): fighters orbit their assigned TF; incoming strikes
+  trigger air combat resolution in `CombatSystem` before reaching the target. Full UI in
+  `AirOpModal` (CAP tab, launch fighters, active CAP display). CAP orbit shown as rotating dots
+  around defended TF (`drawCAPRings()`).
+- **Scout missions** (`MissionType = 'scout'`): squadrons fly to a target hex; detections feed
+  `SearchSystem` and create confirmed contacts. Scouts shown as triangles on the map.
 - Add tests: AI launches at least one strike per scenario, AI does not crash when no targets are visible.
 
 

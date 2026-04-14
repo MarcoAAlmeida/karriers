@@ -39,7 +39,15 @@
       "WebFetch(domain:hub.nuxt.com)",
       "WebFetch(domain:www.reddit.com)",
       "WebFetch(domain:nuxt.com)",
-      "WebFetch(domain:claude.com)"
+      "WebFetch(domain:claude.com)",
+      "Bash(head -40 /c/Users/marco/pub/karriers/game/engine/*.ts)",
+      "WebFetch(domain:strudel.cc)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:codeberg.org)",
+      "WebFetch(domain:npmjs.org)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebSearch",
+      "WebFetch(domain:strudel.js.org)"
     ]
   }
 }

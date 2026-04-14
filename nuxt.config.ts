@@ -28,10 +28,6 @@ export default defineNuxtConfig({
     '@game': fileURLToPath(new URL('./game', import.meta.url))
   },
 
-  nitro: {
-    preset: 'cloudflare-pages'
-  },
-
   vite: {
     optimizeDeps: {
       include: ['pixi.js', 'honeycomb-grid', 'maplibre-gl']
