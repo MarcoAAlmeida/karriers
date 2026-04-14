@@ -4,6 +4,20 @@ Most recent sprint always on top.
 
 ---
 
+## Sprint 19 — Damage Consequences *(Bug 1)*
+
+**Goal:** Sinking a carrier matters. Losses cascade through aircraft and deck operations. Builds on `ScenarioDefinition` and per-squadron `aircraftCount` from Sprint 18.
+
+- Gate all mission launches on carrier `status !== 'sunk'`; cancel pending orders on sink event.
+- On sink: squadrons on deck are lost; airborne squadrons lose their home and search for an alternative carrier within range.
+- Recovery rerouting: find nearest friendly carrier with deck space; recover there or ditch.
+- Over-capacity cap (nominal + 20%): reduced sortie rate, higher fuel burn, hard recovery block above cap.
+- Aircraft attrition: `aircraftCount` (loaded from scenario JSON) decrements permanently on combat/flak loss; squadron disbanded at zero.
+- Fuel exhaustion mid-flight: aircraft lost at sea if return fuel insufficient; player can knowingly launch a one-way strike.
+- **Tests:** Sunk carrier issues no orders; orphaned strike finds alternate carrier; orphaned strike ditches when no carrier is in range; over-cap penalties reduce sortie rate; `aircraftCount` reaches zero and squadron is removed; one-way strike resolves correctly. 113/113 unit tests across 10 files — all green in < 1 s.
+
+---
+
 ## Sprint 18 — JSON Scenario Files
 
 **Goal:** Scenarios live in `public/scenarios/` as plain JSON. Edit a file, refresh — no rebuild.

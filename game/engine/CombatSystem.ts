@@ -65,12 +65,25 @@ export class CombatSystem {
       const result = this.resolveStrike(plan, taskGroups, ships, squadrons, currentTime, flightPlans)
       if (result) {
         results.push(result)
-        // Update squadron losses
+        // Update squadron losses (may set deckStatus = 'destroyed' at zero)
         this.applySquadronLosses(plan, result.aircraftLost, squadrons)
       }
 
-      // Strike is now returning
-      plan.status = 'returning'
+      if (plan.isOneWay) {
+        // One-way strike: aircraft don't return — any survivors are still lost at sea
+        plan.status = 'lost'
+        for (const sqId of plan.squadronIds) {
+          const sq = squadrons.get(sqId)
+          if (sq && sq.deckStatus !== 'destroyed') {
+            sq.aircraftCount = 0
+            sq.deckStatus = 'destroyed'
+            sq.currentMissionId = undefined
+          }
+        }
+      } else {
+        // Strike is now returning
+        plan.status = 'returning'
+      }
     }
 
     return results
@@ -374,6 +387,11 @@ export class CombatSystem {
       const losses = Math.min(sq.aircraftCount, Math.ceil(remaining * (sq.aircraftCount / Math.max(plan.squadronIds.length, 1))))
       sq.aircraftCount = Math.max(0, sq.aircraftCount - losses)
       remaining -= losses
+      // Squadron disbanded when all aircraft are lost
+      if (sq.aircraftCount === 0) {
+        sq.deckStatus = 'destroyed'
+        sq.currentMissionId = undefined
+      }
     }
   }
 

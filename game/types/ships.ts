@@ -40,6 +40,7 @@ export interface ShipClass {
   damageControlRating: number  // 0–100
   flightDeckCapacity?: number  // aircraft spots (carriers only)
   hangarCapacity?: number      // aircraft in hangar (carriers only)
+  fuelPayload?: number         // fuel units carried (oilers only); deducted from side pool on sinking
 }
 
 export interface Ship {

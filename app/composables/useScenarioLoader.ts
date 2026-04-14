@@ -79,6 +79,8 @@ function buildState(scenario: Scenario): MutableGameState {
     shipClasses,
     victoryConditions: scenario.victoryConditions,
     pendingCombatEvents: [],
-    pendingGameEvents: []
+    pendingGameEvents: [],
+    alliedFuelPool: scenario.alliedFuelPool ?? 0,
+    japaneseFuelPool: scenario.japaneseFuelPool ?? 0
   }
 }

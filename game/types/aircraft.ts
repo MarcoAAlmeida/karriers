@@ -59,4 +59,5 @@ export interface FlightPlan {
   escortMissionId?: string   // if this is a strike, fighters may escort
   status: FlightStatus
   aircraftLost: number       // cumulative losses on this mission
+  isOneWay?: boolean         // aircraft are not expected to return after striking
 }

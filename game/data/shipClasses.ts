@@ -328,7 +328,8 @@ export const SHIP_CLASSES: ShipClass[] = [
     aaStrength: 15,
     armorRating: 5,
     hullPoints: 40,
-    damageControlRating: 40
+    damageControlRating: 40,
+    fuelPayload: 5000
   },
   {
     id: 41,
@@ -352,7 +353,8 @@ export const SHIP_CLASSES: ShipClass[] = [
     aaStrength: 10,
     armorRating: 5,
     hullPoints: 38,
-    damageControlRating: 38
+    damageControlRating: 38,
+    fuelPayload: 4000
   }
 ]
 

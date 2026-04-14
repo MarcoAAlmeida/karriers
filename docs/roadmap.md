@@ -5,7 +5,7 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 ---
 
-## Current State (end of Sprint 17)
+## Current State (end of Sprint 20)
 
 - ✅ Full engine: movement, search, fog of war, air ops, combat, damage, victory
 - ✅ PixiJS renderer: hex grid, unit tokens, animated strike dots (outbound + return), flight path arcs anchored to launch position, sunk-ship markers (red ✕ diamond), FOW contacts at lastKnownHex, selection ring
@@ -26,6 +26,9 @@ Completed sprint history lives in `docs/done/sprints.md`.
 - ✅ Scout missions: player and AI send scouts; contacts fed into fog-of-war; scout triangles on map
 - ✅ Clickable in-flight squadrons: click any moving dot to open strike detail; disambiguation for overlapping dots
 - ✅ Range rings: search and strike range drawn around selected task groups; color-coded by side
+- ✅ Damage consequences: carrier-sunk gates launches; deck squadrons destroyed on sink; airborne squadrons reroute or ditch; over-capacity deck penalties; `aircraftCount` attrition disbands squadrons; one-way strikes
+- ✅ Vitest: 113 tests across 10 files — all green in < 1 s
+- ✅ Side fuel pool: `alliedFuelPool` / `japaneseFuelPool` in `MutableGameState`; initialised from JSON scenario; `oiler` ship type with `fuelPayload`; pool decrements on launch and oiler sinking; fuel-exhaustion gates launches; both-sides-zero ends game
 - ❌ Scramble alert (incoming strike warning + one-click CAP launch for player)
 - ❌ MapTiler basemap
 - ❌ Custom sprite art for unit tokens
@@ -41,32 +44,6 @@ Completed sprint history lives in `docs/done/sprints.md`.
 ---
 
 # Upcoming Sprints
-
-## Sprint 19 — Damage Consequences *(Bug 1)*
-
-**Goal:** Sinking a carrier matters. Losses cascade through aircraft and deck operations. Builds on `ScenarioDefinition` and per-squadron `aircraftCount` from Sprint 18.
-
-- Gate all mission launches on carrier `status !== 'sunk'`; cancel pending orders on sink event.
-- On sink: squadrons on deck are lost; airborne squadrons lose their home and search for an alternative carrier within range.
-- Recovery rerouting: find nearest friendly carrier with deck space; recover there or ditch.
-- Over-capacity cap (nominal + 20%): reduced sortie rate, higher fuel burn, hard recovery block above cap.
-- Aircraft attrition: `aircraftCount` (loaded from scenario JSON) decrements permanently on combat/flak loss; squadron disbanded at zero.
-- Fuel exhaustion mid-flight: aircraft lost at sea if return fuel insufficient; player can knowingly launch a one-way strike.
-- **Tests:** Sunk carrier issues no orders; orphaned strike finds alternate carrier; orphaned strike ditches when no carrier is in range; over-cap penalties reduce sortie rate; `aircraftCount` reaches zero and squadron is removed; one-way strike resolves correctly.
-
----
-
-## Sprint 20 — Side Fuel Pool + Oilers *(Bug 2)*
-
-**Goal:** Fuel is a finite strategic resource. Sinking an oiler hurts. Reads `alliedFuelPool` / `japaneseFuelPool` from the JSON scenario loaded in Sprint 18.
-
-- Add `alliedFuelPool` / `japaneseFuelPool` to `MutableGameState`; initialise from `ScenarioDefinition`.
-- Add `oiler` to `ShipType`; `ShipClass` gains `fuelPayload`; sinking an oiler deducts payload from side pool.
-- Deduct mission cost at launch: `aircraftCount × roleRate × missionRange`; lost aircraft = spent fuel.
-- Fuel-exhaustion gate: side at zero pool cannot launch; both sides at zero ends the game.
-- **Tests:** Pool decrements on launch; oiler sinking deducts correct payload; exhaustion gates launch attempts; game ends when both sides are exhausted; pool initialises correctly from JSON.
-
----
 
 ## Sprint 21 — CAP Endurance + Per-Mission Consumption *(Bug 3)*
 

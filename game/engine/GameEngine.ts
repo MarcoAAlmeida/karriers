@@ -51,6 +51,9 @@ export interface MutableGameState {
   victoryConditions: VictoryCondition[]
   pendingCombatEvents: CombatEvent[]
   pendingGameEvents: GameEvent[]
+  /** Side aviation fuel pools — initialised from scenario JSON; decremented on mission launch and oiler sinking. */
+  alliedFuelPool: number
+  japaneseFuelPool: number
 }
 
 /**
@@ -72,6 +75,9 @@ export interface GameSnapshot {
   sightingReports: import('../types').SightingReport[]
   /** Planned movement path for each task group (for route line rendering). */
   movementPaths: ReadonlyMap<string, readonly { q: number; r: number }[]>
+  /** Current aviation fuel pools — for HUD fuel gauges. */
+  alliedFuelPool: number
+  japaneseFuelPool: number
 }
 
 export interface TickResult {
@@ -102,7 +108,7 @@ export type OrderPayload =
   | { type: 'set-order'; taskGroupId: string; order: TaskGroupOrder; destination?: { q: number; r: number } }
   | { type: 'set-speed'; taskGroupId: string; speedKnots: number }
   | { type: 'set-destination'; taskGroupId: string; destination: { q: number; r: number } }
-  | { type: 'launch-strike'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number } }
+  | { type: 'launch-strike'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number }; oneWay?: boolean }
   | { type: 'launch-cap'; taskGroupId: string; squadronIds: string[] }
   | { type: 'launch-search'; taskGroupId: string; squadronIds: string[]; searchSector: number }
   | { type: 'launch-scout'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number } }
@@ -142,7 +148,7 @@ export class GameEngine {
     this.searchSystem = new SearchSystem(this.rng, initialState.aircraftTypes)
     this.fogOfWarSystem = new FogOfWarSystem()
     this.damageSystem = new DamageSystem(this.rng, initialState.shipClasses)
-    this.airOpsSystem = new AirOpsSystem(initialState.aircraftTypes)
+    this.airOpsSystem = new AirOpsSystem(initialState.aircraftTypes, initialState.shipClasses)
     this.combatSystem = new CombatSystem(this.rng, initialState.aircraftTypes, initialState.shipClasses, this.airOpsSystem)
     this.surfaceCombatSystem = new SurfaceCombatSystem(this.rng, initialState.shipClasses, this.damageSystem)
     this.victorySystem = new VictorySystem(initialState.shipClasses)
@@ -186,7 +192,8 @@ export class GameEngine {
           taskGroupId: payload.taskGroupId,
           squadronIds: payload.squadronIds,
           mission: 'strike',
-          targetHex: payload.targetHex
+          targetHex: payload.targetHex,
+          oneWay: payload.oneWay
         }
         this.airOpsSystem.queueLaunch(order)
         break
@@ -305,12 +312,19 @@ export class GameEngine {
     for (const tg of this.state.taskGroups.values()) {
       taskGroupPositions.set(tg.id, tg.position)
     }
+    // Pass fuel pools as a mutable object so AirOpsSystem can gate and deduct
+    const fuelPools = { allied: this.state.alliedFuelPool, japanese: this.state.japaneseFuelPool }
     const newPlans = this.airOpsSystem.processStep(
       this.state.squadrons,
       this.state.flightPlans,
       taskGroupPositions,
-      currentTime
+      this.state.taskGroups,
+      this.state.ships,
+      currentTime,
+      fuelPools
     )
+    this.state.alliedFuelPool = fuelPools.allied
+    this.state.japaneseFuelPool = fuelPools.japanese
     for (const plan of newPlans) {
       if (plan.mission === 'strike') {
         this.state.pendingCombatEvents.push({
@@ -450,6 +464,20 @@ export class GameEngine {
         })
       }
     }
+
+    // 9. Fuel exhaustion — both sides at zero (and finite) → scenario ends in a draw
+    if (!this.scenarioEnded &&
+        isFinite(this.state.alliedFuelPool) && this.state.alliedFuelPool <= 0 &&
+        isFinite(this.state.japaneseFuelPool) && this.state.japaneseFuelPool <= 0) {
+      this.scenarioEnded = true
+      this.timeSystem.pause()
+      this.events.emit('ScenarioEnded', {
+        winner: 'draw',
+        time: currentTime,
+        alliedPoints: 0,
+        japanesePoints: 0
+      })
+    }
   }
 
   // ── Snapshot ──────────────────────────────────────────────────────────────
@@ -477,7 +505,9 @@ export class GameEngine {
       combatEvents: [...this.state.pendingCombatEvents],
       gameEvents: [...this.state.pendingGameEvents],
       sightingReports: [...this.lastStepSightings],
-      movementPaths
+      movementPaths,
+      alliedFuelPool: this.state.alliedFuelPool,
+      japaneseFuelPool: this.state.japaneseFuelPool
     }
   }
 
@@ -499,6 +529,27 @@ export class GameEngine {
     const event = { type: 'ship-sunk' as const, shipId, taskGroupId, side: ship.side, at: time, hex }
     this.state.pendingCombatEvents.push(event)
     this.events.emit('ShipSunk', { shipId, taskGroupId, side: ship.side, time })
+
+    // Carrier sinking: destroy deck squadrons; airborne squadrons rerouted lazily
+    const sc = this.state.shipClasses.get(ship.classId)
+    if (sc?.type.includes('carrier')) {
+      this.airOpsSystem.handleCarrierSunk(
+        shipId,
+        taskGroupId,
+        this.state.squadrons,
+        this.state.ships,
+        this.state.taskGroups
+      )
+    }
+
+    // Oiler sinking: deduct fuel payload from the owning side's pool
+    if (sc?.type === 'oiler' && sc.fuelPayload) {
+      if (ship.side === 'allied') {
+        this.state.alliedFuelPool = Math.max(0, this.state.alliedFuelPool - sc.fuelPayload)
+      } else {
+        this.state.japaneseFuelPool = Math.max(0, this.state.japaneseFuelPool - sc.fuelPayload)
+      }
+    }
   }
 
   // ── Scout resolution ──────────────────────────────────────────────────────
@@ -597,6 +648,8 @@ export function createEmptyState(): MutableGameState {
     shipClasses: new Map(),
     victoryConditions: [],
     pendingCombatEvents: [],
-    pendingGameEvents: []
+    pendingGameEvents: [],
+    alliedFuelPool: Infinity,
+    japaneseFuelPool: Infinity
   }
 }
