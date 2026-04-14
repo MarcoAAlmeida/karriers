@@ -42,21 +42,6 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 # Upcoming Sprints
 
-## Sprint 18 — JSON Scenario Files *(Item 1)*
-
-**Goal:** Scenarios live in `public/scenarios/` as plain JSON. Edit a file, refresh — no rebuild. This is the data foundation all subsequent sprints build on.
-
-- New types in `game/types/scenario.ts`: `ScenarioDefinition`, `TaskGroupDefinition`, `ShipDefinition`, `SquadronDefinition`.
-- Each `SquadronDefinition` carries `aircraftType` and `aircraftCount` (the finite starting inventory — the authoritative headcount for attrition in Sprint 19).
-- `public/scenarios/manifest.json` lists available scenarios; `public/scenarios/midway.json` nests ships and squadrons under their task group (side and `taskGroupId` derived by loader).
-- `midway.json` also declares `alliedFuelPool` and `japaneseFuelPool` (initial placeholder values; tuned in Sprint 24).
-- New `game/data/scenarioRepository.ts`: `fetchManifest()` + `fetchScenario(id)` — fetches JSON, denormalises, appends `SHIP_CLASSES` + `AIRCRAFT_TYPES`, returns full `Scenario`.
-- `ScenarioSelectScreen.vue`: async manifest fetch on mount; `fetchScenario(id)` on selection.
-- `midway.ts` retained as a reference/fallback only; engine switches to JSON loader.
-- **Tests:** Midway JSON round-trips to identical engine state as the TS reference; editing `aircraftCount` in JSON changes the in-game squadron size; manifest fetch returns at least one entry; missing scenario ID rejects gracefully.
-
----
-
 ## Sprint 19 — Damage Consequences *(Bug 1)*
 
 **Goal:** Sinking a carrier matters. Losses cascade through aircraft and deck operations. Builds on `ScenarioDefinition` and per-squadron `aircraftCount` from Sprint 18.

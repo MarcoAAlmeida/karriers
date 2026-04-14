@@ -4,6 +4,21 @@ Most recent sprint always on top.
 
 ---
 
+## Sprint 18 — JSON Scenario Files
+
+**Goal:** Scenarios live in `public/scenarios/` as plain JSON. Edit a file, refresh — no rebuild.
+
+- New definition types in `game/types/scenario.ts`: `ScenarioDefinition`, `ScenarioForceDefinition`, `TaskGroupDefinition`, `ShipDefinition`, `SquadronDefinition`. Each `SquadronDefinition` carries `aircraftTypeId` and `aircraftCount` (authoritative headcount for Sprint 19 attrition). `Scenario` gains optional `alliedFuelPool` / `japaneseFuelPool` fields.
+- `public/scenarios/manifest.json`: lists Midway (medium) and Coral Sea stub (easy).
+- `public/scenarios/midway.json`: full Midway definition — ships and squadrons nested under their task group; side and `taskGroupId` derived by loader; `alliedFuelPool: 15000`, `japaneseFuelPool: 12000` (placeholder values for Sprint 20 tuning).
+- `game/data/scenarioRepository.ts`: `fetchManifest()`, `fetchScenario(id)`, and exported `scenarioFromDefinition()` denormaliser. Appends `SHIP_CLASSES` + `AIRCRAFT_TYPES` reference data; fills ship/squadron defaults (`hullDamage`, `fuelLevel`, `deckStatus`, etc.).
+- `ScenarioSelectScreen.vue`: async manifest fetch on mount with loading spinner; per-scenario launch spinner; `fetchScenario(id)` replaces the hardcoded `MIDWAY` import.
+- `midway.ts` retained as TS reference; not used in the game flow.
+- **Bug fixes:** three pre-existing test failures resolved — missing `engine.resume()` in CAP test; OS2U Kingfisher scout target out of range (80 hexes vs 20-hex limit); `makeZeroSq` used non-existent `aircraftTypeId: 34` (Zero is ID 30).
+- **Tests:** 11 new tests in `tests/data/scenarioRepository.test.ts` — round-trip ship/TG/squadron fidelity, fuel pool presence, `aircraftCount` mutation, `maxAircraftCount` override, manifest structure, manifest fetch error, scenario fetch success, missing-ID rejection. 106/106 unit tests + 25/25 E2E tests green.
+
+---
+
 ## Sprint 17 — Enemy AI, CAP & Scout Missions
 
 **Goal:** Japan plays back. The game has no tension until the enemy acts.
