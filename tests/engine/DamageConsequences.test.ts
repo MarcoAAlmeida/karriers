@@ -260,8 +260,9 @@ describe('Sprint 19 — Damage Consequences', () => {
     })
 
     const engine = new GameEngine(state, T0, T_END, 1)
-    // 3 steps: step 1 reroutes (past returnEta), step 2 waits, step 3 new returnEta passes
-    steps(engine, 3)
+    // 4 steps: step 1 reroutes (past returnEta), step 2 waits, step 3 new returnEta passes
+    // → recovering with readyTime set (Sprint 21 rearm cycle), step 4 rearm completes
+    steps(engine, 4)
 
     // Squadron should have rerouted to tf-17 and recovered there
     const finalSq = state.squadrons.get('vf-6')!

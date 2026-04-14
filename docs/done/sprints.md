@@ -4,6 +4,31 @@ Most recent sprint always on top.
 
 ---
 
+## Sprint 22 — Dynamic Strike Targeting *(Bug 4)*
+
+**Goal:** Strikes chase moving targets. Planes come home to where the carrier is, not where it was. Bezier arcs always originate from the strike group's live in-flight hex — never from the original launch position.
+
+- Three new `FlightPlan` fields: `launchHex` (fixed carrier hex at launch), `currentHex` (lerped in-flight position, updated every step), `targetTaskGroupId` (which TG to chase for live `targetHex` updates).
+- `updateFlightPositions()` in `AirOpsSystem`: outbound path lerps `currentHex` from `launchHex` toward the (possibly moved) `targetHex`; `targetHex` is updated each step to the target TG's current position via the owning side's `ContactRecord` (or held at last known hex when contact goes inactive — FOW).
+- Return leg: `returnEta` re-anchored to home carrier's current position each step; `currentHex` lerped from strike point back to carrier. CAP/search plans (no `targetHex`) skip the re-anchor logic via an early `continue`.
+- `resolveTargetTG()` in `GameEngine`: on launch, finds the closest enemy TG within 3 hexes of `targetHex`; sets `targetTaskGroupId` so the engine can chase it even as it moves.
+- Renderer (`usePixiRenderer`): bezier arc origin uses `plan.currentHex` (or fallback `planOriginPx` for legacy plans); animation t-value computed from `currentHexTime → eta` window rather than `launchTime → eta`.
+- **Tests:** targetHex chases moving contact; returnEta increases when carrier moves away on return leg; targetHex freezes at last known hex when contact goes inactive; currentHex advances toward target each step. 127/127 unit tests across 12 files — all green in < 1 s. 25/25 Playwright E2E tests passing.
+
+---
+
+## Sprint 21 — CAP Endurance + Per-Mission Fuel Consumption *(Bug 3)*
+
+**Goal:** CAP rotations are expensive. Running constant CAP drains aviation fuel and blocks the deck.
+
+- `processOrbitExpiry()` in `AirOpsSystem`: CAP and search missions automatically transition from `airborne` → `returning` once their 90-min eta elapses. Previously the timer was computed but never acted upon.
+- `REARM_MINUTES` per mission type: cap/scout/search/intercept = 30 min, strike/escort = 60 min. Both recovery paths (normal + soft-overcap) now set `readyTime` blocking the next launch until the rearm cycle completes.
+- `applyStrikeRearmPenalty()` public method on `AirOpsSystem`: when a carrier takes a hit, all recovering squadrons in that TG have their `readyTime` extended by 60 min (deck fires disrupt ground crews). Called from `GameEngine.runStep()` after `applyStrikeHits()`.
+- `Ship.fuelLevel` decrements each step proportional to `tg.speed / sc.maxSpeed` (0.5 % at full speed per 30-min step). `TaskGroup.fuelState` synced as average of non-sunk ship fuel levels.
+- **Tests:** CAP plan leaves airborne after 90-min orbit; recovering CAP has readyTime set; ship fuelLevel decrements when moving, stays constant when stationary; strike rearm penalty extends readyTime. 123/123 unit tests across 11 files — all green in < 1 s. 25/25 Playwright E2E tests passing.
+
+---
+
 ## Sprint 19 — Damage Consequences *(Bug 1)*
 
 **Goal:** Sinking a carrier matters. Losses cascade through aircraft and deck operations. Builds on `ScenarioDefinition` and per-squadron `aircraftCount` from Sprint 18.

@@ -521,11 +521,15 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
   // ── Flight paths ──────────────────────────────────────────────────────────
 
-  /** Capture origin pixels for newly airborne plans; keep planOriginPx in sync. */
+  /** Redraws flight paths whenever the plans map changes. */
   function onFlightPlansChanged(plans: Map<string, FlightPlan>): void {
+    // Prune stale planOriginPx entries (fallback for plans without currentHex)
+    for (const id of planOriginPx.keys()) {
+      if (!plans.has(id)) planOriginPx.delete(id)
+    }
+    // Capture origin for plans that predate Sprint 22 (no currentHex set)
     for (const plan of plans.values()) {
       if (planOriginPx.has(plan.id)) continue
-      // Only capture on first airborne sighting — before the plan status transitions
       if (plan.status !== 'airborne') continue
       if (!plan.targetHex) continue
       const sq = forcesStore.squadrons.get(plan.squadronIds[0] ?? '')
@@ -534,10 +538,6 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       if (!tg) continue
       const px = hexToPixel(tg.position)
       planOriginPx.set(plan.id, { x: px.x, y: px.y })
-    }
-    // Prune stale entries
-    for (const id of planOriginPx.keys()) {
-      if (!plans.has(id)) planOriginPx.delete(id)
     }
     drawFlightPaths(plans)
   }
@@ -566,14 +566,16 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       const isReturning = plan.status === 'returning'
       if (!isOutbound && !isReturning) continue
 
-      // Use captured launch origin so the arc doesn't warp as the carrier moves
-      const originPx = planOriginPx.get(plan.id)
+      // Arc origin: use live currentHex (Sprint 22) or fall back to captured launch pixel
+      const originPx = plan.currentHex
+        ? hexToPixel(plan.currentHex)
+        : planOriginPx.get(plan.id)
       if (!originPx) continue
 
       const target = hexToPixel(plan.targetHex)
 
       if (isOutbound) {
-        // Outbound arc: origin → target
+        // Outbound arc: current position → target
         const mx = (originPx.x + target.x) / 2
         const my = (originPx.y + target.y) / 2 - 60
 
@@ -590,17 +592,17 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
         flightPathLayer.lineTo(target.x - Math.cos(angle + 0.4) * arrowLen, target.y - Math.sin(angle + 0.4) * arrowLen)
         flightPathLayer.stroke({ color: COL.flightPath, width: 1.5, alpha: 0.7 })
       } else {
-        // Return arc: target → current carrier position (carrier may have moved)
+        // Return arc: current position → home carrier (carrier may have moved)
         const sq = forcesStore.squadrons.get(plan.squadronIds[0] ?? '')
         if (!sq) continue
         const tg = forcesStore.taskGroups.get(sq.taskGroupId)
         if (!tg) continue
         const carrierPx = hexToPixel(tg.position)
 
-        const mx = (target.x + carrierPx.x) / 2
-        const my = (target.y + carrierPx.y) / 2 - 60
+        const mx = (originPx.x + carrierPx.x) / 2
+        const my = (originPx.y + carrierPx.y) / 2 - 60
 
-        flightPathLayer.moveTo(target.x, target.y)
+        flightPathLayer.moveTo(originPx.x, originPx.y)
         flightPathLayer.quadraticCurveTo(mx, my, carrierPx.x, carrierPx.y)
         flightPathLayer.stroke({ color: COL.flightPath, width: 1, alpha: 0.4 })
 
@@ -713,20 +715,39 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
     for (const plan of forcesStore.flightPlans.values()) {
       if (!plan.targetHex) continue
-      const originPx = planOriginPx.get(plan.id)
-      if (!originPx) continue
 
       const target = hexToPixel(plan.targetHex)
       let dotPos: { x: number; y: number } | null = null
 
       if ((plan.status === 'airborne' || plan.status === 'inbound') && plan.eta) {
-        const launchMin = gameTimeToMinutes(plan.launchTime)
-        const etaMin = gameTimeToMinutes(plan.eta)
-        const total = etaMin - launchMin
-        if (total > 0) {
-          const t = Math.min(1, Math.max(0, (nowMin - launchMin) / total))
-          const cp = { x: (originPx.x + target.x) / 2, y: (originPx.y + target.y) / 2 - 60 }
-          dotPos = bezierPoint(t, originPx, cp, target)
+        // Arc origin: live currentHex (Sprint 22) or legacy captured origin
+        const originPx = plan.currentHex
+          ? hexToPixel(plan.currentHex)
+          : planOriginPx.get(plan.id)
+        if (!originPx) continue
+
+        if (plan.currentHexTime && plan.currentHex) {
+          // Sprint 22: animate from currentHex toward targetHex using time since currentHexTime
+          const currentHexMin = gameTimeToMinutes(plan.currentHexTime)
+          const etaMin = gameTimeToMinutes(plan.eta)
+          const total = etaMin - currentHexMin
+          if (total > 0) {
+            const t = Math.min(1, Math.max(0, (nowMin - currentHexMin) / total))
+            const cp = { x: (originPx.x + target.x) / 2, y: (originPx.y + target.y) / 2 - 60 }
+            dotPos = bezierPoint(t, originPx, cp, target)
+          } else {
+            dotPos = target
+          }
+        } else {
+          // Legacy: full-path interpolation from launch to eta
+          const launchMin = gameTimeToMinutes(plan.launchTime)
+          const etaMin = gameTimeToMinutes(plan.eta)
+          const total = etaMin - launchMin
+          if (total > 0) {
+            const t = Math.min(1, Math.max(0, (nowMin - launchMin) / total))
+            const cp = { x: (originPx.x + target.x) / 2, y: (originPx.y + target.y) / 2 - 60 }
+            dotPos = bezierPoint(t, originPx, cp, target)
+          }
         }
       } else if (plan.status === 'returning' && plan.eta && plan.returnEta) {
         const sq = forcesStore.squadrons.get(plan.squadronIds[0] ?? '')
@@ -735,13 +756,33 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
         if (!tg) continue
         const carrierPx = hexToPixel(tg.position)
 
-        const etaMin = gameTimeToMinutes(plan.eta)
-        const returnMin = gameTimeToMinutes(plan.returnEta)
-        const total = returnMin - etaMin
-        if (total > 0) {
-          const t = Math.min(1, Math.max(0, (nowMin - etaMin) / total))
-          const cp = { x: (target.x + carrierPx.x) / 2, y: (target.y + carrierPx.y) / 2 - 60 }
-          dotPos = bezierPoint(t, target, cp, carrierPx)
+        // Arc origin: live currentHex or fall back to targetHex (strike point)
+        const originPx = plan.currentHex
+          ? hexToPixel(plan.currentHex)
+          : target
+
+        if (plan.currentHexTime && plan.currentHex) {
+          // Sprint 22: animate from currentHex toward carrier using time since currentHexTime
+          const currentHexMin = gameTimeToMinutes(plan.currentHexTime)
+          const returnMin = gameTimeToMinutes(plan.returnEta)
+          const total = returnMin - currentHexMin
+          if (total > 0) {
+            const t = Math.min(1, Math.max(0, (nowMin - currentHexMin) / total))
+            const cp = { x: (originPx.x + carrierPx.x) / 2, y: (originPx.y + carrierPx.y) / 2 - 60 }
+            dotPos = bezierPoint(t, originPx, cp, carrierPx)
+          } else {
+            dotPos = carrierPx
+          }
+        } else {
+          // Legacy: interpolate from strike point to carrier
+          const etaMin = gameTimeToMinutes(plan.eta)
+          const returnMin = gameTimeToMinutes(plan.returnEta)
+          const total = returnMin - etaMin
+          if (total > 0) {
+            const t = Math.min(1, Math.max(0, (nowMin - etaMin) / total))
+            const cp = { x: (target.x + carrierPx.x) / 2, y: (target.y + carrierPx.y) / 2 - 60 }
+            dotPos = bezierPoint(t, target, cp, carrierPx)
+          }
         }
       }
 

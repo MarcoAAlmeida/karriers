@@ -17,6 +17,7 @@ import type {
   ShipClass,
   VictoryCondition
 } from '../types'
+import { gameTimeToMinutes } from '../types'
 import type { TerrainMap } from '../utils/pathfinding'
 import { hexDistance } from '../utils/hexMath'
 import type { TimeScale } from './TimeSystem'
@@ -114,6 +115,9 @@ export type OrderPayload =
   | { type: 'launch-scout'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number } }
   | { type: 'recall-mission'; flightPlanId: string }
 
+/** Ship fuel (% of fuelLevel) consumed per 30-min step at full speed. */
+const SHIP_FUEL_PER_STEP_FULL = 0.5
+
 // ── GameEngine ─────────────────────────────────────────────────────────────
 
 export class GameEngine {
@@ -193,7 +197,8 @@ export class GameEngine {
           squadronIds: payload.squadronIds,
           mission: 'strike',
           targetHex: payload.targetHex,
-          oneWay: payload.oneWay
+          oneWay: payload.oneWay,
+          targetTaskGroupId: this.resolveTargetTG(payload.targetHex, payload.taskGroupId),
         }
         this.airOpsSystem.queueLaunch(order)
         break
@@ -289,6 +294,26 @@ export class GameEngine {
       }
     }
 
+    // 1b. Ship fuel consumption — fuelLevel decrements proportional to speed each step
+    for (const tg of this.state.taskGroups.values()) {
+      if (tg.speed <= 0) continue
+      for (const shipId of tg.shipIds) {
+        const ship = this.state.ships.get(shipId)
+        if (!ship || ship.status === 'sunk') continue
+        const sc = this.state.shipClasses.get(ship.classId)
+        const maxSpeed = sc?.maxSpeed ?? tg.speed
+        const fraction = maxSpeed > 0 ? tg.speed / maxSpeed : 0
+        ship.fuelLevel = Math.max(0, (ship.fuelLevel ?? 100) - SHIP_FUEL_PER_STEP_FULL * fraction)
+      }
+      // Sync TG fuelState as average of non-sunk ship fuel levels
+      const liveShips = tg.shipIds
+        .map(id => this.state.ships.get(id))
+        .filter((s): s is Ship => !!s && s.status !== 'sunk')
+      if (liveShips.length > 0) {
+        tg.fuelState = liveShips.reduce((sum, s) => sum + (s.fuelLevel ?? 100), 0) / liveShips.length
+      }
+    }
+
     // 2. Search & sighting
     const sightings = this.searchSystem.processStep(
       this.state.taskGroups,
@@ -314,6 +339,7 @@ export class GameEngine {
     }
     // Pass fuel pools as a mutable object so AirOpsSystem can gate and deduct
     const fuelPools = { allied: this.state.alliedFuelPool, japanese: this.state.japaneseFuelPool }
+    const contacts = { allied: this.state.alliedContacts, japanese: this.state.japaneseContacts }
     const newPlans = this.airOpsSystem.processStep(
       this.state.squadrons,
       this.state.flightPlans,
@@ -321,7 +347,8 @@ export class GameEngine {
       this.state.taskGroups,
       this.state.ships,
       currentTime,
-      fuelPools
+      fuelPools,
+      contacts
     )
     this.state.alliedFuelPool = fuelPools.allied
     this.state.japaneseFuelPool = fuelPools.japanese
@@ -407,6 +434,12 @@ export class GameEngine {
       for (const shipId of sunkIds) {
         this.emitShipSunk(shipId, currentTime)
       }
+      // Extend rearm downtime for recovering squadrons on any hit carrier
+      for (const hit of strike.hits) {
+        this.airOpsSystem.applyStrikeRearmPenalty(
+          hit.shipId, this.state.ships, this.state.squadrons, this.state.taskGroups, currentTime
+        )
+      }
       // Record as combat event
       this.state.pendingCombatEvents.push({ type: 'strike-resolved', result: strike })
       // Individual ship-damaged events
@@ -478,6 +511,32 @@ export class GameEngine {
         japanesePoints: 0
       })
     }
+  }
+
+  // ── Target resolution ─────────────────────────────────────────────────────
+
+  /**
+   * Finds the enemy TG closest to targetHex (within 3 hexes) at the moment of
+   * a strike launch. The ID is stored in the FlightPlan so the engine can chase
+   * the TG as it moves each step.
+   */
+  private resolveTargetTG(targetHex: HexCoord, launchingTGId: string): string | undefined {
+    const launchingTG = this.state.taskGroups.get(launchingTGId)
+    if (!launchingTG) return undefined
+    const enemySide: Side = launchingTG.side === 'allied' ? 'japanese' : 'allied'
+
+    let bestId: string | undefined
+    let bestDist = 3  // max hex radius to match
+
+    for (const tg of this.state.taskGroups.values()) {
+      if (tg.side !== enemySide) continue
+      const dist = hexDistance(tg.position, targetHex)
+      if (dist < bestDist) {
+        bestId = tg.id
+        bestDist = dist
+      }
+    }
+    return bestId
   }
 
   // ── Snapshot ──────────────────────────────────────────────────────────────

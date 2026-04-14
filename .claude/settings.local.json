@@ -47,7 +47,8 @@
       "WebFetch(domain:npmjs.org)",
       "WebFetch(domain:www.npmjs.com)",
       "WebSearch",
-      "WebFetch(domain:strudel.js.org)"
+      "WebFetch(domain:strudel.js.org)",
+      "Bash(findstr :3000)"
     ]
   }
 }

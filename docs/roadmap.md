@@ -5,16 +5,14 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 ---
 
-## Current State (end of Sprint 20)
+## Current State (end of Sprint 22)
 
 - ✅ Full engine: movement, search, fog of war, air ops, combat, damage, victory
-- ✅ PixiJS renderer: hex grid, unit tokens, animated strike dots (outbound + return), flight path arcs anchored to launch position, sunk-ship markers (red ✕ diamond), FOW contacts at lastKnownHex, selection ring
+- ✅ PixiJS renderer: hex grid, unit tokens, animated strike dots (outbound + return), flight path arcs always originating from the strike group's live in-flight position, sunk-ship markers (red ✕ diamond), FOW contacts at lastKnownHex, selection ring
 - ✅ HUD: time controls, task group panel, order modal, air ops modal (Select All), keyboard shortcuts, command palette, toasts
 - ✅ Scenario: Battle of Midway (4 TFs, 35 ships, 25 squadrons, 4 victory conditions)
 - ✅ Sunk markers: permanent red ✕ diamond drawn at the hex where each ship went down
 - ✅ Scenario end screen: winner label, Allied/Japanese points, result line, Return to Menu
-- ✅ Vitest: 72 tests across 9 files — all green in < 1 s
-- ✅ Playwright E2E: 21/21 tests passing; `pnpm test:e2e` fully self-contained
 - ✅ `window.__GAME_STATE__` + `window.__GAME_ACTIONS__` dev bridge
 - ✅ Game shell: TopStatusBar, NavSidebar (collapsible), EngagementEventsPanel (collapsible); sea-blue palette
 - ✅ Modal pause UX: all player-input modals (AirOps, Order, command palette, StrikeDetailModal) auto-pause the simulation on open and resume on close
@@ -27,8 +25,11 @@ Completed sprint history lives in `docs/done/sprints.md`.
 - ✅ Clickable in-flight squadrons: click any moving dot to open strike detail; disambiguation for overlapping dots
 - ✅ Range rings: search and strike range drawn around selected task groups; color-coded by side
 - ✅ Damage consequences: carrier-sunk gates launches; deck squadrons destroyed on sink; airborne squadrons reroute or ditch; over-capacity deck penalties; `aircraftCount` attrition disbands squadrons; one-way strikes
-- ✅ Vitest: 113 tests across 10 files — all green in < 1 s
 - ✅ Side fuel pool: `alliedFuelPool` / `japaneseFuelPool` in `MutableGameState`; initialised from JSON scenario; `oiler` ship type with `fuelPayload`; pool decrements on launch and oiler sinking; fuel-exhaustion gates launches; both-sides-zero ends game
+- ✅ CAP endurance: 90-min orbit timer fires automatically; per-mission rearm cycle (30–60 min) gates next launch; strike hits on carrier extend recovering-squadron downtime; `Ship.fuelLevel` / `TaskGroup.fuelState` decrement each step proportional to speed
+- ✅ Dynamic strike targeting: `targetHex` chases moving TG via live contacts (or holds last known hex under FOW); `currentHex` lerped each step for smooth arc origin; `returnEta` re-anchored to carrier's current position on each return-leg step; bezier arcs redraw from in-flight position
+- ✅ Vitest: 127 tests across 12 files — all green in < 1 s
+- ✅ Playwright E2E: 25/25 tests passing; `pnpm test:e2e` fully self-contained
 - ❌ Scramble alert (incoming strike warning + one-click CAP launch for player)
 - ❌ MapTiler basemap
 - ❌ Custom sprite art for unit tokens
@@ -44,29 +45,6 @@ Completed sprint history lives in `docs/done/sprints.md`.
 ---
 
 # Upcoming Sprints
-
-## Sprint 21 — CAP Endurance + Per-Mission Consumption *(Bug 3)*
-
-**Goal:** CAP rotations are expensive. Running constant CAP drains aviation fuel and blocks the deck.
-
-- CAP missions expire after ~90 min airborne; fighters are forced to return for refuel/rearm.
-- Rearm cycle blocks deck operations; incoming strike during rearm extends downtime significantly.
-- All missions deduct aviation fuel from side pool at rates: scout < fighter < strike (per aircraft per range unit).
-- `fuelLevel` / `fuelState` on `Ship` / `TaskGroup` decrements each step proportional to speed.
-- **Tests:** CAP recalled after endurance window; deck disruption blocks concurrent recovery; fuel pool decrements each step; strike launched during rearm cycle experiences extended downtime.
-
----
-
-## Sprint 22 — Dynamic Strike Targeting *(Bug 4)*
-
-**Goal:** Strikes chase moving targets. Planes come home to where the carrier is, not where it was.
-
-- Engine: replace fixed `FlightPlan.targetHex` with a live lookup each step against the target task group's current position (or last known contact hex if target is lost to fog of war).
-- Return leg: re-anchor recovery hex to home carrier's current position each step.
-- Renderer: bezier arcs in `usePixiRenderer` re-computed each frame from current positions; course corrections are smooth.
-- **Tests:** Target moves mid-flight and strike resolves at new position; carrier maneuvers during return and planes recover correctly; target lost to FOW — strike continues to last known hex.
-
----
 
 ## Sprint 23 — Fuel Gauge HUD *(Bug 5)*
 

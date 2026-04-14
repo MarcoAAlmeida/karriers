@@ -8,10 +8,11 @@ import type {
   TaskGroup,
   MissionType,
   HexCoord,
-  Side
+  Side,
+  ContactRecord
 } from '../types'
 import { gameTimeToMinutes, minutesToGameTime } from '../types'
-import { hexDistance, NM_PER_HEX } from '../utils/hexMath'
+import { hexDistance, lerpHex, NM_PER_HEX } from '../utils/hexMath'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -44,6 +45,24 @@ const MISSION_FUEL_RATE: Partial<Record<MissionType, number>> = {
 }
 /** Virtual range (hexes) used when computing CAP fuel cost (no fixed target). */
 const CAP_ORBIT_RANGE_HEXES = 5
+/**
+ * Refuel + rearm time (minutes) after recovering from each mission type.
+ * Gates the next launch from that squadron.
+ */
+const REARM_MINUTES: Partial<Record<MissionType, number>> = {
+  'cap':       30,
+  'intercept': 30,
+  'strike':    60,
+  'escort':    60,
+  'scout':     30,
+  'search':    30,
+  'asw':       30,
+}
+/**
+ * Extra minutes added to a recovering squadron's readyTime when its carrier
+ * takes a hit during an enemy air strike (deck fires, blast damage).
+ */
+const STRIKE_REARM_PENALTY_MINUTES = 60
 
 // ── Launch order (queued by GameEngine.issueOrder) ─────────────────────────
 
@@ -55,6 +74,8 @@ export interface LaunchOrder {
   searchSector?: number
   /** When true the range check allows the full one-way range (no return fuel required). */
   oneWay?: boolean
+  /** ID of the enemy TG being targeted — enables live position tracking in flight. */
+  targetTaskGroupId?: string
 }
 
 // ── AirOpsSystem ───────────────────────────────────────────────────────────
@@ -95,9 +116,16 @@ export class AirOpsSystem {
     taskGroups: Map<string, TaskGroup>,
     ships: Map<string, Ship>,
     currentTime: GameTime,
-    fuelPools: { allied: number; japanese: number }
+    fuelPools: { allied: number; japanese: number },
+    contacts: { allied: Map<string, ContactRecord>; japanese: Map<string, ContactRecord> }
   ): FlightPlan[] {
     const newPlans: FlightPlan[] = []
+
+    // 0. CAP/search orbit expiry — once eta has passed, transition to returning
+    this.processOrbitExpiry(flightPlans, currentTime)
+
+    // 0b. Update live in-flight positions (chase moving targets; re-anchor return leg)
+    this.updateFlightPositions(flightPlans, taskGroups, squadrons, contacts, currentTime)
 
     // 1. Process recoveries — airborne squadrons whose returnEta has passed
     this.processRecoveries(squadrons, flightPlans, taskGroups, ships, currentTime)
@@ -200,6 +228,95 @@ export class AirOpsSystem {
 
   // ── Internal ──────────────────────────────────────────────────────────────
 
+  /**
+   * Updates live in-flight hex positions for all airborne and returning plans:
+   * - Outbound: chases the target TG (or last known contact) and lerps currentHex
+   *   from launchHex toward the (possibly moved) targetHex.
+   * - Returning: re-anchors returnEta to the carrier's current position and lerps
+   *   currentHex from the strike point (targetHex at eta) toward the carrier.
+   */
+  private updateFlightPositions(
+    flightPlans: Map<string, FlightPlan>,
+    taskGroups: Map<string, TaskGroup>,
+    squadrons: Map<string, Squadron>,
+    contacts: { allied: Map<string, ContactRecord>; japanese: Map<string, ContactRecord> },
+    currentTime: GameTime
+  ): void {
+    const nowMin = gameTimeToMinutes(currentTime)
+
+    for (const plan of flightPlans.values()) {
+      if (plan.status === 'airborne') {
+        // ── Chase target TG (or last known contact) ───────────────────────
+        if (plan.targetTaskGroupId) {
+          const sideContacts = plan.side === 'allied' ? contacts.allied : contacts.japanese
+          // Find an active contact for this TG — use its lastKnownHex
+          const contact = [...sideContacts.values()]
+            .find(c => c.confirmedTaskGroupId === plan.targetTaskGroupId && c.isActive)
+          if (contact) {
+            plan.targetHex = contact.lastKnownHex
+          }
+          // If no active contact, keep last targetHex (FOW — last known position)
+        }
+
+        // ── Lerp currentHex along outbound leg ────────────────────────────
+        if (plan.launchHex && plan.targetHex && plan.eta) {
+          const launchMin = gameTimeToMinutes(plan.launchTime)
+          const etaMin = gameTimeToMinutes(plan.eta)
+          const total = etaMin - launchMin
+          const t = total > 0 ? Math.min(1, Math.max(0, (nowMin - launchMin) / total)) : 1
+          plan.currentHex = lerpHex(plan.launchHex, plan.targetHex, t)
+          plan.currentHexTime = currentTime
+        }
+
+      } else if (plan.status === 'returning') {
+        // CAP/search have no targetHex — their returnEta was fixed at launch and is
+        // respected as-is. Only strikes (targetHex defined) need live re-anchoring.
+        if (!plan.targetHex) continue
+
+        const sq = squadrons.get(plan.squadronIds[0] ?? '')
+        if (!sq) continue
+        const homeTG = taskGroups.get(sq.taskGroupId)
+        if (!homeTG) continue
+
+        // ── Re-anchor returnEta to carrier's current position ─────────────
+        const currentOrigin = plan.currentHex ?? plan.targetHex
+        const distNm = hexDistance(currentOrigin, homeTG.position) * NM_PER_HEX
+        const speed = this.slowestCruiseSpeed(plan.squadronIds, squadrons)
+        const remainingMin = speed > 0 ? (distNm / speed) * 60 : 30
+        plan.returnEta = minutesToGameTime(nowMin + Math.max(30, Math.ceil(remainingMin / 30) * 30))
+
+        // ── Lerp currentHex from strike point toward carrier ──────────────
+        if (plan.eta && plan.returnEta) {
+          const etaMin = gameTimeToMinutes(plan.eta)
+          const returnEtaMin = gameTimeToMinutes(plan.returnEta)
+          const total = returnEtaMin - etaMin
+          const t = total > 0 ? Math.min(1, Math.max(0, (nowMin - etaMin) / total)) : 1
+          plan.currentHex = lerpHex(plan.targetHex, homeTG.position, t)
+          plan.currentHexTime = currentTime
+        }
+      }
+    }
+  }
+
+  /**
+   * Transitions CAP and search flight plans from 'airborne' to 'returning'
+   * once their orbit time (eta) has elapsed. Mirrors processScoutArrivals
+   * but requires no contact resolution — just forces the return leg.
+   */
+  private processOrbitExpiry(
+    flightPlans: Map<string, FlightPlan>,
+    currentTime: GameTime
+  ): void {
+    const nowMin = gameTimeToMinutes(currentTime)
+    for (const plan of flightPlans.values()) {
+      if (plan.mission !== 'cap' && plan.mission !== 'search') continue
+      if (plan.status !== 'airborne') continue
+      if (!plan.eta) continue
+      if (gameTimeToMinutes(plan.eta) > nowMin) continue
+      plan.status = 'returning'
+    }
+  }
+
   private executeLaunchOrder(
     order: LaunchOrder,
     squadrons: Map<string, Squadron>,
@@ -279,7 +396,11 @@ export class AirOpsSystem {
       returnEta,
       status: 'airborne',
       aircraftLost: 0,
-      isOneWay: order.oneWay ?? false
+      isOneWay: order.oneWay ?? false,
+      launchHex: carrierPosition,
+      currentHex: carrierPosition,
+      currentHexTime: currentTime,
+      targetTaskGroupId: order.targetTaskGroupId,
     }
 
     // Transition squadrons to airborne
@@ -401,8 +522,10 @@ export class AirOpsSystem {
             if (!sq) continue
             sq.deckStatus = 'recovering'
             sq.currentMissionId = undefined
-            if (isOverCap) {
-              sq.readyTime = minutesToGameTime(nowMin + OVERCAP_PENALTY_MINUTES)
+            const rearmMin = REARM_MINUTES[plan.mission] ?? 0
+            const penalty = isOverCap ? OVERCAP_PENALTY_MINUTES : 0
+            if (rearmMin + penalty > 0) {
+              sq.readyTime = minutesToGameTime(nowMin + rearmMin + penalty)
             }
           }
           continue
@@ -416,6 +539,10 @@ export class AirOpsSystem {
         if (!sq) continue
         sq.deckStatus = 'recovering'
         sq.currentMissionId = undefined
+        const rearmMin = REARM_MINUTES[plan.mission] ?? 0
+        if (rearmMin > 0) {
+          sq.readyTime = minutesToGameTime(nowMin + rearmMin)
+        }
       }
     }
 
@@ -608,5 +735,31 @@ export class AirOpsSystem {
     return [...squadrons.values()].filter(
       sq => sq.taskGroupId === taskGroupId && sq.deckStatus === 'spotted'
     )
+  }
+
+  /**
+   * Called when a carrier takes a hit during an air strike.
+   * Extends the readyTime of all recovering squadrons in that carrier's TG
+   * to simulate deck fires, blast damage, and chaos disrupting the rearm cycle.
+   */
+  applyStrikeRearmPenalty(
+    carrierShipId: string,
+    ships: Map<string, Ship>,
+    squadrons: Map<string, Squadron>,
+    taskGroups: Map<string, TaskGroup>,
+    currentTime: GameTime
+  ): void {
+    const ship = ships.get(carrierShipId)
+    if (!ship) return
+    const sc = this.shipClasses.get(ship.classId)
+    if (!sc?.type.includes('carrier')) return
+
+    const nowMin = gameTimeToMinutes(currentTime)
+    for (const sq of squadrons.values()) {
+      if (sq.taskGroupId !== ship.taskGroupId) continue
+      if (sq.deckStatus !== 'recovering') continue
+      const baseMin = sq.readyTime ? gameTimeToMinutes(sq.readyTime) : nowMin
+      sq.readyTime = minutesToGameTime(baseMin + STRIKE_REARM_PENALTY_MINUTES)
+    }
   }
 }
