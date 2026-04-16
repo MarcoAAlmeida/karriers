@@ -10,9 +10,10 @@ Most recent sprint always on top.
 
 - `useForcesStore` gains `alliedFuelPool`, `japaneseFuelPool` (synced from snapshot each step), `initialAlliedFuelPool`/`initialJapaneseFuelPool` (set once at scenario load), and `alliedFuelPct`/`japaneseFuelPct` computeds (0–100, Infinity-safe).
 - New `initFuelPools(allied, japanese)` action on `useForcesStore`; called from `useScenarioLoader.loadScenario` before the first `syncFromSnapshot`.
-- `FuelGauges.vue`: two horizontal progress bars — US (sky-blue) and IJN (rose-red). Amber warning pulse via `animate-pulse` at ≤ 20%; bar turns slate and label reads "GROUNDED" at 0%. Hidden (`v-if`) when `gameStore.phase === 'menu'`.
-- `TopStatusBar.vue`: `<FuelGauges />` injected into the flex row between title and clock.
+- `app/components/game/FuelGauges.vue`: two horizontal progress bars — US (sky-blue) and IJN (rose-red). Amber warning pulse via `animate-pulse` at ≤ 20%; bar turns slate and label reads "GROUNDED" at 0%. Hidden (`v-if`) when `gameStore.phase === 'menu'`.
+- `TopStatusBar.vue`: `<GameFuelGauges />` injected into the flex row between title and clock (Nuxt 3 auto-import prefixes `game/` subdirectory components with `Game`).
 - `__GAME_STATE__` bridge: `alliedFuelPct` and `japaneseFuelPct` exposed for Playwright.
+- **Bug fix:** Component initially registered as `<FuelGauges />` (wrong); corrected to `<GameFuelGauges />` after gauges were not visible in browser.
 - **Tests:** pcts start at 100 after initFuelPools; decrements proportionally on syncFromSnapshot; warning styling at ≤ 20%; GROUNDED label and danger styling at 0%. 131/131 unit tests across 13 files — all green in < 1 s. 25/25 Playwright E2E tests passing.
 
 ---
