@@ -7,10 +7,13 @@
       <p class="text-gray-400 tracking-widest text-sm uppercase">Pacific Carrier Operations · 1941–1945</p>
     </div>
 
+    <!-- Loading state -->
+    <div v-if="loading" class="text-gray-500 text-sm">Loading scenarios…</div>
+
     <!-- Scenario cards -->
-    <div class="w-full max-w-3xl grid grid-cols-1 md:grid-cols-2 gap-5">
+    <div v-else class="w-full max-w-3xl grid grid-cols-1 md:grid-cols-2 gap-5">
       <div
-        v-for="meta in SCENARIO_MANIFEST"
+        v-for="meta in manifest"
         :key="meta.id"
         :data-testid="`scenario-card-${meta.id}`"
         class="group rounded-xl border border-gray-700 bg-gray-900 hover:border-amber-500 hover:bg-gray-800 transition-all cursor-pointer p-5 flex flex-col gap-3"
@@ -41,6 +44,7 @@
             variant="soft"
             block
             trailing-icon="i-heroicons-play"
+            :loading="launching === meta.id"
             :data-testid="`play-btn-${meta.id}`"
             @click.stop="selectScenario(meta.id)"
           />
@@ -53,13 +57,25 @@
 </template>
 
 <script setup lang="ts">
-import { SCENARIO_MANIFEST } from '@game/data/scenarios/index'
-import { MIDWAY } from '@game/data/scenarios/midway'
+import { ref, onMounted } from 'vue'
+import { fetchManifest, fetchScenario } from '@game/data/scenarioRepository'
 import type { ScenarioMetadata } from '@game/types'
 
 const { loadScenario } = useScenarioLoader()
 
 const AVAILABLE_IDS = new Set(['midway'])
+
+const manifest = ref<ScenarioMetadata[]>([])
+const loading = ref(true)
+const launching = ref<string | null>(null)
+
+onMounted(async () => {
+  try {
+    manifest.value = await fetchManifest()
+  } finally {
+    loading.value = false
+  }
+})
 
 function isAvailable(id: string): boolean {
   return AVAILABLE_IDS.has(id)
@@ -69,8 +85,14 @@ function difficultyColor(d: ScenarioMetadata['difficulty']): 'success' | 'warnin
   return d === 'easy' ? 'success' : d === 'medium' ? 'warning' : 'error'
 }
 
-function selectScenario(id: string): void {
-  if (!isAvailable(id)) return
-  if (id === 'midway') loadScenario(MIDWAY)
+async function selectScenario(id: string): Promise<void> {
+  if (!isAvailable(id) || launching.value !== null) return
+  launching.value = id
+  try {
+    const scenario = await fetchScenario(id)
+    loadScenario(scenario)
+  } finally {
+    launching.value = null
+  }
 }
 </script>

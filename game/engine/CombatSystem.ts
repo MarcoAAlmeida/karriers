@@ -65,12 +65,25 @@ export class CombatSystem {
       const result = this.resolveStrike(plan, taskGroups, ships, squadrons, currentTime, flightPlans)
       if (result) {
         results.push(result)
-        // Update squadron losses
+        // Update squadron losses (may set deckStatus = 'destroyed' at zero)
         this.applySquadronLosses(plan, result.aircraftLost, squadrons)
       }
 
-      // Strike is now returning
-      plan.status = 'returning'
+      if (plan.isOneWay) {
+        // One-way strike: aircraft don't return — any survivors are still lost at sea
+        plan.status = 'lost'
+        for (const sqId of plan.squadronIds) {
+          const sq = squadrons.get(sqId)
+          if (sq && sq.deckStatus !== 'destroyed') {
+            sq.aircraftCount = 0
+            sq.deckStatus = 'destroyed'
+            sq.currentMissionId = undefined
+          }
+        }
+      } else {
+        // Strike is now returning
+        plan.status = 'returning'
+      }
     }
 
     return results
@@ -88,12 +101,26 @@ export class CombatSystem {
   ): StrikeResult | null {
     if (!plan.targetHex) return null
 
-    // Find enemy TG at target hex
-    const targetTG = this.findTaskGroupAtHex(plan.targetHex, taskGroups, plan.side === 'allied' ? 'japanese' : 'allied')
+    const enemySide = plan.side === 'allied' ? 'japanese' : 'allied'
+
+    // Prefer direct lookup by tracked TG ID — handles moving targets correctly.
+    // Fall back to hex lookup for strikes without a tracked TG (e.g. land-based targets).
+    let targetTG: TaskGroup | undefined
+    if (plan.targetTaskGroupId) {
+      const byId = taskGroups.get(plan.targetTaskGroupId)
+      if (byId && byId.side === enemySide) targetTG = byId
+    }
+    if (!targetTG) {
+      targetTG = this.findTaskGroupAtHex(plan.targetHex, taskGroups, enemySide)
+    }
     if (!targetTG) {
       plan.status = 'returning'
       return null
     }
+
+    // Snap targetHex to where the strike actually resolves so the return arc
+    // originates from the correct position.
+    plan.targetHex = { ...targetTG.position }
 
     const attackerSquadrons = plan.squadronIds
       .map(id => squadrons.get(id))
@@ -374,6 +401,11 @@ export class CombatSystem {
       const losses = Math.min(sq.aircraftCount, Math.ceil(remaining * (sq.aircraftCount / Math.max(plan.squadronIds.length, 1))))
       sq.aircraftCount = Math.max(0, sq.aircraftCount - losses)
       remaining -= losses
+      // Squadron disbanded when all aircraft are lost
+      if (sq.aircraftCount === 0) {
+        sq.deckStatus = 'destroyed'
+        sq.currentMissionId = undefined
+      }
     }
   }
 

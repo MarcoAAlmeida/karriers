@@ -51,7 +51,7 @@ export interface FlightPlan {
   squadronIds: string[]
   mission: MissionType
   side: Side
-  targetHex?: HexCoord       // strike target or CAP station
+  targetHex?: HexCoord       // strike target or CAP station — updated live each step
   searchSector?: number      // 0–7
   launchTime: GameTime
   eta?: GameTime             // estimated time on target
@@ -59,4 +59,13 @@ export interface FlightPlan {
   escortMissionId?: string   // if this is a strike, fighters may escort
   status: FlightStatus
   aircraftLost: number       // cumulative losses on this mission
+  isOneWay?: boolean         // aircraft are not expected to return after striking
+  /** Carrier hex at the moment of launch (fixed). Used to compute outbound flight progress. */
+  launchHex?: HexCoord
+  /** Live in-flight hex position — updated by the engine every step. */
+  currentHex?: HexCoord
+  /** Game time when currentHex was last set (used by renderer for smooth dot animation). */
+  currentHexTime?: GameTime
+  /** ID of the target task group (for live position tracking; undefined for non-strike missions). */
+  targetTaskGroupId?: string
 }

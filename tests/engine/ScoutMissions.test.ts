@@ -201,12 +201,13 @@ describe('Scout Missions — Sprint 20', () => {
     const reveals: boolean[] = []
     engine.events.on('ScoutContactRevealed', ({ contactFound }) => reveals.push(contactFound))
 
-    // Target an empty hex far from Japanese TF
+    // Target an empty hex within range (14 hexes = 280 NM, under OS2U's 402 NM scout radius)
+    // but more than 3 hexes from the Japanese TF at q:27, r:51
     engine.issueOrder({
       type: 'launch-scout',
       taskGroupId: 'tf-16',
       squadronIds: ['os2u-scout'],
-      targetHex: { q: 5, r: 5 }   // no TF here
+      targetHex: { q: 42, r: 38 }   // no TF here
     })
 
     for (let i = 0; i < 12; i++) {
@@ -303,7 +304,7 @@ describe('JapaneseAI — Sprint 18/20 additions', () => {
   function makeZeroSq(overrides: Partial<Squadron> = {}): Squadron {
     return {
       id: 'akagi-fighter',
-      aircraftTypeId: 34,   // A6M Zero — fighter role
+      aircraftTypeId: 30,   // A6M Zero — fighter role
       name: 'Akagi Zeros',
       side: 'japanese',
       taskGroupId: 'kido-butai',

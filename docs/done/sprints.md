@@ -4,18 +4,93 @@ Most recent sprint always on top.
 
 ---
 
-## Sprint 17 — Enemy AI (Japanese Strike Operations)
+## Sprint 23 — Fuel Gauge HUD *(Bug 5)*
+
+**Goal:** Both sides' fuel states are always visible in the TopStatusBar.
+
+- `useForcesStore` gains `alliedFuelPool`, `japaneseFuelPool` (synced from snapshot each step), `initialAlliedFuelPool`/`initialJapaneseFuelPool` (set once at scenario load), and `alliedFuelPct`/`japaneseFuelPct` computeds (0–100, Infinity-safe).
+- New `initFuelPools(allied, japanese)` action on `useForcesStore`; called from `useScenarioLoader.loadScenario` before the first `syncFromSnapshot`.
+- `app/components/game/FuelGauges.vue`: two horizontal progress bars — US (sky-blue) and IJN (rose-red). Amber warning pulse via `animate-pulse` at ≤ 20%; bar turns slate and label reads "GROUNDED" at 0%. Hidden (`v-if`) when `gameStore.phase === 'menu'`.
+- `TopStatusBar.vue`: `<GameFuelGauges />` injected into the flex row between title and clock (Nuxt 3 auto-import prefixes `game/` subdirectory components with `Game`).
+- `__GAME_STATE__` bridge: `alliedFuelPct` and `japaneseFuelPct` exposed for Playwright.
+- **Bug fix:** Component initially registered as `<FuelGauges />` (wrong); corrected to `<GameFuelGauges />` after gauges were not visible in browser.
+- **Tests:** pcts start at 100 after initFuelPools; decrements proportionally on syncFromSnapshot; warning styling at ≤ 20%; GROUNDED label and danger styling at 0%. 131/131 unit tests across 13 files — all green in < 1 s. 25/25 Playwright E2E tests passing.
+
+---
+
+## Sprint 22 — Dynamic Strike Targeting *(Bug 4)*
+
+**Goal:** Strikes chase moving targets. Planes come home to where the carrier is, not where it was. Bezier arcs always originate from the strike group's live in-flight hex — never from the original launch position.
+
+- Three new `FlightPlan` fields: `launchHex` (fixed carrier hex at launch), `currentHex` (lerped in-flight position, updated every step), `targetTaskGroupId` (which TG to chase for live `targetHex` updates).
+- `updateFlightPositions()` in `AirOpsSystem`: outbound path lerps `currentHex` from `launchHex` toward the (possibly moved) `targetHex`; `targetHex` is updated each step to the target TG's current position via the owning side's `ContactRecord` (or held at last known hex when contact goes inactive — FOW).
+- Return leg: `returnEta` re-anchored to home carrier's current position each step; `currentHex` lerped from strike point back to carrier. CAP/search plans (no `targetHex`) skip the re-anchor logic via an early `continue`.
+- `resolveTargetTG()` in `GameEngine`: on launch, finds the closest enemy TG within 3 hexes of `targetHex`; sets `targetTaskGroupId` so the engine can chase it even as it moves.
+- Renderer (`usePixiRenderer`): bezier arc origin uses `plan.currentHex` (or fallback `planOriginPx` for legacy plans); animation t-value computed from `currentHexTime → eta` window rather than `launchTime → eta`.
+- **Tests:** targetHex chases moving contact; returnEta increases when carrier moves away on return leg; targetHex freezes at last known hex when contact goes inactive; currentHex advances toward target each step. 127/127 unit tests across 12 files — all green in < 1 s. 25/25 Playwright E2E tests passing.
+
+---
+
+## Sprint 21 — CAP Endurance + Per-Mission Fuel Consumption *(Bug 3)*
+
+**Goal:** CAP rotations are expensive. Running constant CAP drains aviation fuel and blocks the deck.
+
+- `processOrbitExpiry()` in `AirOpsSystem`: CAP and search missions automatically transition from `airborne` → `returning` once their 90-min eta elapses. Previously the timer was computed but never acted upon.
+- `REARM_MINUTES` per mission type: cap/scout/search/intercept = 30 min, strike/escort = 60 min. Both recovery paths (normal + soft-overcap) now set `readyTime` blocking the next launch until the rearm cycle completes.
+- `applyStrikeRearmPenalty()` public method on `AirOpsSystem`: when a carrier takes a hit, all recovering squadrons in that TG have their `readyTime` extended by 60 min (deck fires disrupt ground crews). Called from `GameEngine.runStep()` after `applyStrikeHits()`.
+- `Ship.fuelLevel` decrements each step proportional to `tg.speed / sc.maxSpeed` (0.5 % at full speed per 30-min step). `TaskGroup.fuelState` synced as average of non-sunk ship fuel levels.
+- **Tests:** CAP plan leaves airborne after 90-min orbit; recovering CAP has readyTime set; ship fuelLevel decrements when moving, stays constant when stationary; strike rearm penalty extends readyTime. 123/123 unit tests across 11 files — all green in < 1 s. 25/25 Playwright E2E tests passing.
+
+---
+
+## Sprint 19 — Damage Consequences *(Bug 1)*
+
+**Goal:** Sinking a carrier matters. Losses cascade through aircraft and deck operations. Builds on `ScenarioDefinition` and per-squadron `aircraftCount` from Sprint 18.
+
+- Gate all mission launches on carrier `status !== 'sunk'`; cancel pending orders on sink event.
+- On sink: squadrons on deck are lost; airborne squadrons lose their home and search for an alternative carrier within range.
+- Recovery rerouting: find nearest friendly carrier with deck space; recover there or ditch.
+- Over-capacity cap (nominal + 20%): reduced sortie rate, higher fuel burn, hard recovery block above cap.
+- Aircraft attrition: `aircraftCount` (loaded from scenario JSON) decrements permanently on combat/flak loss; squadron disbanded at zero.
+- Fuel exhaustion mid-flight: aircraft lost at sea if return fuel insufficient; player can knowingly launch a one-way strike.
+- **Tests:** Sunk carrier issues no orders; orphaned strike finds alternate carrier; orphaned strike ditches when no carrier is in range; over-cap penalties reduce sortie rate; `aircraftCount` reaches zero and squadron is removed; one-way strike resolves correctly. 113/113 unit tests across 10 files — all green in < 1 s.
+
+---
+
+## Sprint 18 — JSON Scenario Files
+
+**Goal:** Scenarios live in `public/scenarios/` as plain JSON. Edit a file, refresh — no rebuild.
+
+- New definition types in `game/types/scenario.ts`: `ScenarioDefinition`, `ScenarioForceDefinition`, `TaskGroupDefinition`, `ShipDefinition`, `SquadronDefinition`. Each `SquadronDefinition` carries `aircraftTypeId` and `aircraftCount` (authoritative headcount for Sprint 19 attrition). `Scenario` gains optional `alliedFuelPool` / `japaneseFuelPool` fields.
+- `public/scenarios/manifest.json`: lists Midway (medium) and Coral Sea stub (easy).
+- `public/scenarios/midway.json`: full Midway definition — ships and squadrons nested under their task group; side and `taskGroupId` derived by loader; `alliedFuelPool: 15000`, `japaneseFuelPool: 12000` (placeholder values for Sprint 20 tuning).
+- `game/data/scenarioRepository.ts`: `fetchManifest()`, `fetchScenario(id)`, and exported `scenarioFromDefinition()` denormaliser. Appends `SHIP_CLASSES` + `AIRCRAFT_TYPES` reference data; fills ship/squadron defaults (`hullDamage`, `fuelLevel`, `deckStatus`, etc.).
+- `ScenarioSelectScreen.vue`: async manifest fetch on mount with loading spinner; per-scenario launch spinner; `fetchScenario(id)` replaces the hardcoded `MIDWAY` import.
+- `midway.ts` retained as TS reference; not used in the game flow.
+- **Bug fixes:** three pre-existing test failures resolved — missing `engine.resume()` in CAP test; OS2U Kingfisher scout target out of range (80 hexes vs 20-hex limit); `makeZeroSq` used non-existent `aircraftTypeId: 34` (Zero is ID 30).
+- **Tests:** 11 new tests in `tests/data/scenarioRepository.test.ts` — round-trip ship/TG/squadron fidelity, fuel pool presence, `aircraftCount` mutation, `maxAircraftCount` override, manifest structure, manifest fetch error, scenario fetch success, missing-ID rejection. 106/106 unit tests + 25/25 E2E tests green.
+
+---
+
+## Sprint 17 — Enemy AI, CAP & Scout Missions
 
 **Goal:** Japan plays back. The game has no tension until the enemy acts.
 
 - Implement a `JapaneseAI` controller that issues orders each game step on behalf of all Japanese task forces.
 - Initial AI behavior (rule-based heuristic):
   - Detects Allied TFs within search range using existing `SearchSystem`.
+  - Launches scout missions before committing to strikes (`getScoutSquadrons()`).
   - Launches strike waves toward the nearest detected Allied carrier/TF.
   - Returns planes and re-arms before launching follow-up strikes.
+  - Launches CAP fighters when an Allied inbound strike is detected (`hasInboundStrikeToward()`).
   - Moves TFs to close distance when no target is in range.
 - Wire AI controller into the game loop (runs after player orders, before simulation step).
-- Tune aggression so Midway feels historically plausible but beatable.
+- **CAP missions** (`MissionType = 'cap'`): fighters orbit their assigned TF; incoming strikes
+  trigger air combat resolution in `CombatSystem` before reaching the target. Full UI in
+  `AirOpModal` (CAP tab, launch fighters, active CAP display). CAP orbit shown as rotating dots
+  around defended TF (`drawCAPRings()`).
+- **Scout missions** (`MissionType = 'scout'`): squadrons fly to a target hex; detections feed
+  `SearchSystem` and create confirmed contacts. Scouts shown as triangles on the map.
 - Add tests: AI launches at least one strike per scenario, AI does not crash when no targets are visible.
 
 

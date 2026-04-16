@@ -100,6 +100,17 @@ export function hexDistance(a: HexCoord, b: HexCoord): number {
   return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(ds))
 }
 
+/**
+ * Linearly interpolates between two hex coordinates at fraction t (0–1).
+ * Used by the engine to compute the in-flight position of airborne squadrons.
+ */
+export function lerpHex(a: HexCoord, b: HexCoord, t: number): HexCoord {
+  return {
+    q: Math.round(a.q + (b.q - a.q) * t),
+    r: Math.round(a.r + (b.r - a.r) * t),
+  }
+}
+
 /** All valid in-bounds neighbors of a hex. */
 export function hexNeighbors(coord: HexCoord): HexCoord[] {
   const g = grid()

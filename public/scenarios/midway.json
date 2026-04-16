@@ -1,0 +1,206 @@
+{
+  "id": "midway",
+  "name": "Battle of Midway",
+  "date": "June 4–7, 1942",
+  "description": "The turning point of the Pacific war. Four IJN fleet carriers of the Kido Butai approach Midway Atoll — but US Navy codebreakers have set a trap. Three American carriers wait in ambush NE of Midway.",
+  "difficulty": "medium",
+  "durationHours": 72,
+
+  "startTime": { "day": 1, "hour": 6, "minute": 0 },
+  "endTime":   { "day": 4, "hour": 6, "minute": 0 },
+
+  "mapBounds": { "minQ": 0, "maxQ": 71, "minR": 0, "maxR": 83 },
+
+  "alliedFuelPool": 15000,
+  "japaneseFuelPool": 12000,
+
+  "weatherZones": [
+    {
+      "hexes": [
+        { "q": 18, "r": 35 }, { "q": 19, "r": 35 }, { "q": 20, "r": 35 }, { "q": 21, "r": 35 },
+        { "q": 18, "r": 36 }, { "q": 19, "r": 36 }, { "q": 20, "r": 36 }, { "q": 21, "r": 36 },
+        { "q": 18, "r": 37 }, { "q": 19, "r": 37 }, { "q": 20, "r": 37 }
+      ],
+      "condition": { "visibility": 15, "windSpeed": 25, "ceiling": 2000, "seaState": 4 }
+    },
+    {
+      "hexes": [
+        { "q": 35, "r": 55 }, { "q": 36, "r": 55 }, { "q": 37, "r": 55 },
+        { "q": 42, "r": 48 }, { "q": 43, "r": 48 }, { "q": 44, "r": 48 },
+        { "q": 42, "r": 49 }, { "q": 43, "r": 49 }, { "q": 44, "r": 49 },
+        { "q": 43, "r": 50 }, { "q": 44, "r": 50 }, { "q": 45, "r": 50 }
+      ],
+      "condition": { "visibility": 100, "windSpeed": 12, "ceiling": 8000, "seaState": 2 }
+    }
+  ],
+
+  "victoryConditions": [
+    {
+      "id": "allied-sink-kb",
+      "type": "sink-carrier",
+      "forSide": "allied",
+      "description": "Sink all four Kido Butai fleet carriers (Akagi, Kaga, Soryu, Hiryu)",
+      "points": 100
+    },
+    {
+      "id": "allied-defend-midway",
+      "type": "survive-until",
+      "forSide": "allied",
+      "deadline": { "day": 4, "hour": 6, "minute": 0 },
+      "description": "Prevent Japanese capture of Midway Atoll",
+      "points": 50
+    },
+    {
+      "id": "japanese-sink-carriers",
+      "type": "sink-carrier",
+      "forSide": "japanese",
+      "description": "Sink all three US fleet carriers (Enterprise, Hornet, Yorktown)",
+      "points": 100
+    },
+    {
+      "id": "japanese-capture-midway",
+      "type": "control-hex",
+      "forSide": "japanese",
+      "targetHex": { "q": 35, "r": 55 },
+      "deadline": { "day": 4, "hour": 6, "minute": 0 },
+      "description": "Occupy Midway Atoll with invasion forces",
+      "points": 80
+    }
+  ],
+
+  "forces": [
+    {
+      "side": "allied",
+      "taskGroups": [
+        {
+          "id": "tf-16",
+          "name": "Task Force 16",
+          "flagshipId": "cv-enterprise",
+          "position": { "q": 43, "r": 49 },
+          "course": 220,
+          "speed": 15,
+          "currentOrder": "search",
+          "fuelState": 85,
+          "ships": [
+            { "id": "cv-enterprise", "classId": 1, "name": "USS Enterprise (CV-6)" },
+            { "id": "cv-hornet",     "classId": 1, "name": "USS Hornet (CV-8)" },
+            { "id": "ca-northampton","classId": 8, "name": "USS Northampton (CA-26)" },
+            { "id": "ca-pensacola",  "classId": 8, "name": "USS Pensacola (CA-24)" },
+            { "id": "cl-vincennes",  "classId": 9, "name": "USS Atlanta (CL-51)" },
+            { "id": "dd-balch",      "classId": 10, "name": "USS Balch (DD-363)" },
+            { "id": "dd-conyngham",  "classId": 10, "name": "USS Conyngham (DD-371)" },
+            { "id": "dd-benham",     "classId": 10, "name": "USS Benham (DD-397)" },
+            { "id": "dd-ellet",      "classId": 10, "name": "USS Ellet (DD-398)" },
+            { "id": "dd-maury",      "classId": 10, "name": "USS Maury (DD-401)" },
+            { "id": "dd-phelps",     "classId": 10, "name": "USS Phelps (DD-360)" }
+          ],
+          "squadrons": [
+            { "id": "vf-6", "name": "VF-6 (Fighting Six)",   "aircraftTypeId": 1,  "aircraftCount": 27, "pilotExperience": "veteran" },
+            { "id": "vb-6", "name": "VB-6 (Bombing Six)",    "aircraftTypeId": 10, "aircraftCount": 19, "pilotExperience": "veteran" },
+            { "id": "vs-6", "name": "VS-6 (Scouting Six)",   "aircraftTypeId": 10, "aircraftCount": 19, "pilotExperience": "trained" },
+            { "id": "vt-6", "name": "VT-6 (Torpedo Six)",    "aircraftTypeId": 15, "aircraftCount": 14, "pilotExperience": "trained" },
+            { "id": "vf-8", "name": "VF-8 (Fighting Eight)", "aircraftTypeId": 1,  "aircraftCount": 27, "pilotExperience": "trained" },
+            { "id": "vb-8", "name": "VB-8 (Bombing Eight)",  "aircraftTypeId": 10, "aircraftCount": 35, "pilotExperience": "trained" },
+            { "id": "vt-8", "name": "VT-8 (Torpedo Eight)",  "aircraftTypeId": 15, "aircraftCount": 15, "pilotExperience": "green"   }
+          ]
+        },
+        {
+          "id": "tf-17",
+          "name": "Task Force 17",
+          "flagshipId": "cv-yorktown",
+          "position": { "q": 44, "r": 50 },
+          "course": 215,
+          "speed": 15,
+          "currentOrder": "search",
+          "fuelState": 80,
+          "ships": [
+            { "id": "cv-yorktown",  "classId": 1,  "name": "USS Yorktown (CV-5)" },
+            { "id": "ca-astoria",   "classId": 8,  "name": "USS Astoria (CA-34)" },
+            { "id": "ca-portland",  "classId": 8,  "name": "USS Portland (CA-33)" },
+            { "id": "dd-hammann",   "classId": 10, "name": "USS Hammann (DD-412)" },
+            { "id": "dd-hughes",    "classId": 10, "name": "USS Hughes (DD-410)" },
+            { "id": "dd-morris",    "classId": 10, "name": "USS Morris (DD-417)" },
+            { "id": "dd-anderson",  "classId": 10, "name": "USS Anderson (DD-411)" },
+            { "id": "dd-russell",   "classId": 10, "name": "USS Russell (DD-414)" },
+            { "id": "dd-gwin",      "classId": 10, "name": "USS Gwin (DD-433)" }
+          ],
+          "squadrons": [
+            { "id": "vf-3", "name": "VF-3 (Fighting Three)", "aircraftTypeId": 1,  "aircraftCount": 25, "pilotExperience": "veteran" },
+            { "id": "vb-3", "name": "VB-3 (Bombing Three)",  "aircraftTypeId": 10, "aircraftCount": 18, "pilotExperience": "veteran" },
+            { "id": "vs-5", "name": "VS-5 (Scouting Five)",  "aircraftTypeId": 10, "aircraftCount": 19, "pilotExperience": "veteran" },
+            { "id": "vt-3", "name": "VT-3 (Torpedo Three)",  "aircraftTypeId": 16, "aircraftCount": 12, "pilotExperience": "trained" }
+          ]
+        }
+      ]
+    },
+    {
+      "side": "japanese",
+      "taskGroups": [
+        {
+          "id": "kido-butai",
+          "name": "Kido Butai (1st Carrier Strike Force)",
+          "flagshipId": "cv-akagi",
+          "position": { "q": 27, "r": 51 },
+          "destination": { "q": 35, "r": 55 },
+          "course": 135,
+          "speed": 25,
+          "currentOrder": "strike",
+          "strikeTargetHex": { "q": 35, "r": 55 },
+          "fuelState": 75,
+          "ships": [
+            { "id": "cv-akagi",    "classId": 22, "name": "Akagi" },
+            { "id": "cv-kaga",     "classId": 21, "name": "Kaga" },
+            { "id": "cv-soryu",    "classId": 23, "name": "Soryu" },
+            { "id": "cv-hiryu",    "classId": 23, "name": "Hiryu" },
+            { "id": "bb-haruna",   "classId": 26, "name": "Haruna" },
+            { "id": "bb-kirishima","classId": 26, "name": "Kirishima" },
+            { "id": "ca-tone",     "classId": 27, "name": "Tone" },
+            { "id": "ca-chikuma",  "classId": 27, "name": "Chikuma" },
+            { "id": "dd-nowaki",   "classId": 30, "name": "Nowaki" },
+            { "id": "dd-arashi",   "classId": 30, "name": "Arashi" },
+            { "id": "dd-hagikaze", "classId": 30, "name": "Hagikaze" },
+            { "id": "dd-maikaze",  "classId": 30, "name": "Maikaze" },
+            { "id": "dd-kazagumo", "classId": 31, "name": "Kazagumo" },
+            { "id": "dd-yugumo",   "classId": 31, "name": "Yugumo" }
+          ],
+          "squadrons": [
+            { "id": "akagi-f",  "name": "Akagi Zeros",  "aircraftTypeId": 30, "aircraftCount": 21, "pilotExperience": "ace"     },
+            { "id": "akagi-tb", "name": "Akagi Kates",  "aircraftTypeId": 40, "aircraftCount": 27, "pilotExperience": "ace"     },
+            { "id": "akagi-db", "name": "Akagi Vals",   "aircraftTypeId": 35, "aircraftCount": 18, "pilotExperience": "ace"     },
+            { "id": "kaga-f",   "name": "Kaga Zeros",   "aircraftTypeId": 30, "aircraftCount": 21, "pilotExperience": "ace"     },
+            { "id": "kaga-tb",  "name": "Kaga Kates",   "aircraftTypeId": 40, "aircraftCount": 30, "pilotExperience": "ace"     },
+            { "id": "kaga-db",  "name": "Kaga Vals",    "aircraftTypeId": 35, "aircraftCount": 21, "pilotExperience": "ace"     },
+            { "id": "soryu-f",  "name": "Soryu Zeros",  "aircraftTypeId": 30, "aircraftCount": 21, "pilotExperience": "veteran" },
+            { "id": "soryu-tb", "name": "Soryu Kates",  "aircraftTypeId": 40, "aircraftCount": 18, "pilotExperience": "veteran" },
+            { "id": "soryu-db", "name": "Soryu Vals",   "aircraftTypeId": 35, "aircraftCount": 21, "pilotExperience": "veteran" },
+            { "id": "hiryu-f",  "name": "Hiryu Zeros",  "aircraftTypeId": 30, "aircraftCount": 21, "pilotExperience": "veteran" },
+            { "id": "hiryu-tb", "name": "Hiryu Kates",  "aircraftTypeId": 40, "aircraftCount": 18, "pilotExperience": "veteran" },
+            { "id": "hiryu-db", "name": "Hiryu Vals",   "aircraftTypeId": 35, "aircraftCount": 21, "pilotExperience": "veteran" },
+            { "id": "tone-scout",    "name": "Tone #4 Floatplane",  "aircraftTypeId": 46, "aircraftCount": 1, "pilotExperience": "veteran" },
+            { "id": "chikuma-scout", "name": "Chikuma Floatplane",  "aircraftTypeId": 46, "aircraftCount": 1, "pilotExperience": "veteran" }
+          ]
+        },
+        {
+          "id": "invasion-force",
+          "name": "Midway Invasion Force",
+          "flagshipId": "ca-kumano",
+          "position": { "q": 20, "r": 62 },
+          "destination": { "q": 35, "r": 55 },
+          "course": 90,
+          "speed": 14,
+          "currentOrder": "patrol",
+          "fuelState": 90,
+          "ships": [
+            { "id": "ca-kumano",  "classId": 28, "name": "Kumano" },
+            { "id": "ca-suzuya",  "classId": 28, "name": "Suzuya" },
+            { "id": "ca-mikuma",  "classId": 28, "name": "Mikuma" },
+            { "id": "ca-mogami",  "classId": 28, "name": "Mogami" },
+            { "id": "dd-asashio", "classId": 30, "name": "Asashio" },
+            { "id": "dd-arashio", "classId": 30, "name": "Arashio" }
+          ],
+          "squadrons": []
+        }
+      ]
+    }
+  ]
+}

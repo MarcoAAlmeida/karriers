@@ -1,10 +1,24 @@
-# Karriers — Game Engine Mechanics Reference
+# Karriers — Game Engine Reference
 
 Software-development view of the simulation engine (`game/`). No Vue/Nuxt concepts here — this is pure TypeScript running headlessly.
 
+> **Quick orientation** is in `AGENTS.md § Engine architecture`.
+> This document is the authoritative detail reference.
+
 ---
 
-## 1. Ticking System
+## 1. Engine ↔ Vue Boundary
+
+- `GameEngine` is a plain TypeScript class stored as `shallowRef<GameEngine>` in `stores/game.ts`
+- Engine emits typed events via `TypedEventEmitter<EngineEvents>`
+- Vue reads from `GameSnapshot` / `SidedSnapshot` — immutable copies emitted after each step via `StepComplete`
+- Pinia stores subscribe in setup: `engine.events.on('StepComplete', syncFromSnapshot)`
+- PixiJS never imports Vue; Vue never imports PixiJS — communicate via Pinia + DOM events
+- `game/` must **never** import from `app/`, Vue, or Nuxt
+
+---
+
+## 2. Ticking System
 
 ### Wall clock → simulated time
 
@@ -54,7 +68,7 @@ Between steps, `stepFraction = _accumMs / stepMs` (0→1). The renderer uses thi
 
 ---
 
-## 2. Event Bus
+## 3. Event Bus
 
 `TypedEventEmitter<Events>` (`game/engine/EventEmitter.ts`) — a minimal typed pub/sub with no Vue or Node.js dependencies.
 
@@ -80,7 +94,7 @@ clear(): void
 
 ### GameSnapshot
 
-Immutable view of engine state emitted with `StepComplete`. Pinia stores consume this and never touch `MutableGameState` directly.
+Immutable view of **full engine state** (both sides, ground truth) emitted with `StepComplete`. Pinia stores consume this and never touch `MutableGameState` directly.
 
 ```typescript
 interface GameSnapshot {
@@ -99,29 +113,69 @@ interface GameSnapshot {
 }
 ```
 
+### SidedSnapshot (Sprint 25+)
+
+Fog-of-war-filtered view for a single side. Used by `AIAgent.decideTurn()` and logged to NuxtHub D1.
+AI agents and training pipelines must **never** receive `GameSnapshot` directly — only `SidedSnapshot`.
+
+```typescript
+// engine.getObservation(side: Side): SidedSnapshot
+interface SidedSnapshot {
+  time: GameTime
+  ownTaskGroups:  ReadonlyMap<string, TaskGroup>   // own side, full state
+  enemyContacts:  ReadonlyMap<string, ContactRecord> // enemy — FOW-filtered only
+  squadrons:      ReadonlyMap<string, Squadron>
+  flightPlans:    ReadonlyMap<string, FlightPlan>
+  combatEvents:   CombatEvent[]
+  gameEvents:     GameEvent[]
+  // No taskGroups ground-truth — never expose enemy real positions
+}
+```
+
 ---
 
-## 3. Step Sequence
+## 4. Step Sequence
 
 `GameEngine.runStep()` executes these subsystems in order every 30 simulated minutes:
 
 ```
-1. TimeSystem        advance currentTime by 30 min
-2. MovementSystem    reposition all task groups
-3. SearchSystem      resolve sector searches → SightingReport[]
-4. AirOpsSystem      process deck cycles; process pending launches
-5. FogOfWarSystem    decay old contacts; integrate new sightings
-6. CombatSystem      resolve strikes whose ETA ≤ currentTime
-7. DamageSystem      fire spread, flooding, damage control per ship
+1. TimeSystem           advance currentTime by 30 min
+2. MovementSystem       reposition all task groups
+3. SearchSystem         resolve sector searches → SightingReport[]
+4. AirOpsSystem         process deck cycles; process pending launches
+5. FogOfWarSystem       decay old contacts; integrate new sightings
+6. CombatSystem         resolve strikes whose ETA ≤ currentTime
+7. DamageSystem         fire spread, flooding, damage control per ship
 8. SurfaceCombatSystem  trigger if opposing TGs share a hex
-9. VictorySystem     evaluate all victory conditions
+9. VictorySystem        evaluate all victory conditions
 ```
 
 After all steps in the tick complete, the engine builds a `GameSnapshot`, emits `StepComplete`, then emits individual `SightingDetected` events, and clears `pendingCombatEvents` / `pendingGameEvents`.
 
 ---
 
-## 4. Movement System
+## 5. Order System
+
+Issued via `GameEngine.issueOrder(payload)`. Orders are applied immediately to `MutableGameState` (no queuing except for launch orders which go through `AirOpsSystem.queueLaunch`).
+
+```typescript
+set-order       // change TG's currentOrder + optional destination; resets movement path
+set-speed       // change TG's speed (capped at ship class maxSpeed)
+set-destination // set TG.destination; replans movement path
+launch-strike   // queue launch of squadronIds toward targetHex
+launch-cap      // queue CAP assignment for squadronIds
+launch-search   // queue search mission for squadronIds in searchSector
+recall-mission  // force a FlightPlan to begin returning
+```
+
+### TaskGroupOrder values
+`standby | patrol | search | strike | intercept | escort | refuel | retire`
+
+`search` is the trigger for SearchSystem. `strike` is intent — actual launches require explicit `launch-strike` orders. `retire` causes the TG to pathfind toward the map edge.
+
+---
+
+## 6. Movement System
 
 **File:** `game/engine/MovementSystem.ts`
 
@@ -160,7 +214,7 @@ When a TG reaches its `destination`, the destination is cleared and the order tr
 
 ---
 
-## 5. Search System
+## 7. Search System
 
 **File:** `game/engine/SearchSystem.ts`
 
@@ -192,7 +246,7 @@ Each detection produces a `SightingReport` stored in `lastStepSightings`. False 
 
 ---
 
-## 6. Fog of War System
+## 8. Fog of War System
 
 **File:** `game/engine/FogOfWarSystem.ts`
 
@@ -209,14 +263,14 @@ isVisible(taskGroupId, forSide): boolean
 - Own forces → always `true`
 - Enemy → `true` only if there is an `isActive` contact with `confirmedTaskGroupId === taskGroupId`
 
-`getActiveContacts(side)` returns contacts sorted most-recent first.
+`getActiveContacts(side)` returns contacts sorted most-recent first. This method is used by `engine.getObservation(side)` to build `SidedSnapshot`.
 
 ### Contact types
 Enemy TGs appear as one of: `'carrier-force' | 'battleship-force' | 'surface-force' | 'submarine' | 'transport-convoy' | 'unknown-warships' | 'unknown'`. The reported type may differ from reality based on pilot experience.
 
 ---
 
-## 7. Air Operations System
+## 9. Air Operations System
 
 **File:** `game/engine/AirOpsSystem.ts`
 
@@ -245,7 +299,7 @@ Orders arrive via `queueLaunch(LaunchOrder)` (called by `GameEngine.issueOrder` 
 
 ---
 
-## 8. Combat System
+## 10. Combat System
 
 **File:** `game/engine/CombatSystem.ts`
 
@@ -280,7 +334,7 @@ Carriers are prioritised as targets within a TG. `emitShipSunk()` fires a `ShipS
 
 ---
 
-## 9. Damage System
+## 11. Damage System
 
 **File:** `game/engine/DamageSystem.ts`
 
@@ -298,7 +352,7 @@ Applied every step to every ship, independent of combat.
 
 ---
 
-## 10. Surface Combat System
+## 12. Surface Combat System
 
 **File:** `game/engine/SurfaceCombatSystem.ts`
 
@@ -312,7 +366,7 @@ Triggered automatically when an allied and a Japanese TG occupy the same hex aft
 
 ---
 
-## 11. Victory System
+## 13. Victory System
 
 **File:** `game/engine/VictorySystem.ts`
 
@@ -334,28 +388,7 @@ Evaluated every step. Checks all `VictoryCondition[]` from the scenario.
 
 ---
 
-## 12. Order System
-
-Issued via `GameEngine.issueOrder(payload)`. Orders are applied immediately to `MutableGameState` (no queuing except for launch orders which go through `AirOpsSystem.queueLaunch`).
-
-```typescript
-set-order       // change TG's currentOrder + optional destination; resets movement path
-set-speed       // change TG's speed (capped at ship class maxSpeed)
-set-destination // set TG.destination; replans movement path
-launch-strike   // queue launch of squadronIds toward targetHex
-launch-cap      // queue CAP assignment for squadronIds
-launch-search   // queue search mission for squadronIds in searchSector
-recall-mission  // force a FlightPlan to begin returning
-```
-
-### TaskGroupOrder values
-`standby | patrol | search | strike | intercept | escort | refuel | retire`
-
-`search` is the trigger for SearchSystem. `strike` is intent — actual launches require explicit `launch-strike` orders. `retire` causes the TG to pathfind toward the map edge.
-
----
-
-## 13. RNG
+## 14. RNG
 
 **File:** `game/utils/dice.ts` — Mulberry32 seeded PRNG.
 
@@ -366,10 +399,32 @@ chance(rng, pct): boolean        // true with probability pct/100
 ```
 
 The engine constructor accepts an optional `seed` parameter for deterministic replays.
+Zero `Math.random()` calls exist anywhere in `game/` — all randomness flows through this RNG.
 
 ---
 
-## 14. Key Data Relationships
+## 15. Renderer (app layer)
+
+These are Vue/PixiJS concerns — not part of the headless engine, documented here for cross-layer reference.
+
+### PixiJS layer stack (bottom → top)
+`TerrainLayer` → `GridLayer` → `FogLayer` → `ContactLayer` → `UnitLayer` → `FlightPathLayer` → `SelectionLayer` → `UIAnnotationLayer`
+
+### Hex grid
+- 72 × 84, flat-top orientation, `hexSize = 40` px (circumradius)
+- Horizontal pitch between centers: 60 px; vertical pitch: ≈ 69.3 px
+- `@game` alias points to `game/` directory (Vite + Nuxt alias)
+- `honeycomb-grid` Grid singleton initialised once via `useHexMap()`
+
+### Coordinate transform (Pixi ↔ geographic)
+Needed for MapLibre sync:
+- Anchor: Midway Atoll hex `(35, 55)` ↔ `(28.21°N, 177.37°W)`
+- Scale: 20 NM/hex; 1 NM ≈ 1/60° latitude
+- `hexToLatLon(coord)`: compute NM offset from anchor → lat/lon delta accounting for `cos(lat)` for longitude
+
+---
+
+## 16. Key Data Relationships
 
 ```
 Scenario

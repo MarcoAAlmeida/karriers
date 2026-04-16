@@ -209,6 +209,8 @@ describe('CAP Missions — Sprint 18', () => {
 
     const engine = new GameEngine(state, T0, T1, 1)
     engine.issueOrder({ type: 'launch-cap', taskGroupId: 'tf-16', squadronIds: ['vf-cap'] })
+    engine.setTimeScale(1)
+    engine.resume()
     const result = engine.tick(30 * 130)
 
     expect(result.snapshot).toBeDefined()

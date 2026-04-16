@@ -54,7 +54,9 @@ function makeSnapshot(
     combatEvents: [],
     gameEvents: [],
     sightingReports: [],
-    movementPaths: new Map()
+    movementPaths: new Map(),
+    alliedFuelPool: 0,
+    japaneseFuelPool: 0,
   }
 }
 

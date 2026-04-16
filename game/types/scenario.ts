@@ -1,6 +1,6 @@
 import type { HexCoord, WeatherZone } from './map'
-import type { Side, ShipClass, Ship, TaskGroup } from './ships'
-import type { AircraftType, Squadron } from './aircraft'
+import type { Side, ShipClass, Ship, TaskGroup, ShipStatus, TaskGroupOrder } from './ships'
+import type { AircraftType, Squadron, PilotExperience, DeckStatus, OrdnanceType } from './aircraft'
 
 export interface GameTime {
   day: number
@@ -75,4 +75,75 @@ export interface Scenario extends ScenarioMetadata {
   // Reference data needed for this scenario
   shipClasses: ShipClass[]
   aircraftTypes: AircraftType[]
+  // Fuel pools — loaded from JSON; consumed in Sprint 20
+  alliedFuelPool?: number
+  japaneseFuelPool?: number
+}
+
+// ── JSON definition types (raw shape of public/scenarios/*.json) ──────────────
+
+/** Ship as it appears in the JSON: side and taskGroupId are derived from parent. */
+export interface ShipDefinition {
+  id: string
+  classId: number
+  name: string
+  hullDamage?: number
+  fires?: number
+  floodingRisk?: number
+  fuelLevel?: number
+  ammoLevel?: number
+  damageControlEfficiency?: number
+  status?: ShipStatus
+}
+
+/** Squadron as it appears in the JSON: side, taskGroupId, and runtime state are derived. */
+export interface SquadronDefinition {
+  id: string
+  name: string
+  aircraftTypeId: number
+  aircraftCount: number
+  maxAircraftCount?: number
+  pilotExperience: PilotExperience
+  deckStatus?: DeckStatus
+  fuelLoad?: number
+  ordnanceLoaded?: OrdnanceType
+}
+
+/** Task group as it appears in the JSON: side derived from parent force; shipIds derived from nested ships. */
+export interface TaskGroupDefinition {
+  id: string
+  name: string
+  flagshipId: string
+  position: HexCoord
+  destination?: HexCoord
+  course: number
+  speed: number
+  currentOrder: TaskGroupOrder
+  strikeTargetHex?: HexCoord
+  fuelState: number
+  ships: ShipDefinition[]
+  squadrons: SquadronDefinition[]
+}
+
+/** Force as it appears in the JSON. */
+export interface ScenarioForceDefinition {
+  side: Side
+  taskGroups: TaskGroupDefinition[]
+}
+
+/** Full scenario definition as stored in public/scenarios/*.json. */
+export interface ScenarioDefinition extends ScenarioMetadata {
+  startTime: GameTime
+  endTime: GameTime
+  mapBounds: {
+    minQ: number
+    maxQ: number
+    minR: number
+    maxR: number
+  }
+  weatherZones: WeatherZone[]
+  alliedFuelPool: number
+  japaneseFuelPool: number
+  forces: ScenarioForceDefinition[]
+  victoryConditions: VictoryCondition[]
 }

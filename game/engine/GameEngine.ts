@@ -17,6 +17,7 @@ import type {
   ShipClass,
   VictoryCondition
 } from '../types'
+import { gameTimeToMinutes } from '../types'
 import type { TerrainMap } from '../utils/pathfinding'
 import { hexDistance } from '../utils/hexMath'
 import type { TimeScale } from './TimeSystem'
@@ -51,6 +52,9 @@ export interface MutableGameState {
   victoryConditions: VictoryCondition[]
   pendingCombatEvents: CombatEvent[]
   pendingGameEvents: GameEvent[]
+  /** Side aviation fuel pools — initialised from scenario JSON; decremented on mission launch and oiler sinking. */
+  alliedFuelPool: number
+  japaneseFuelPool: number
 }
 
 /**
@@ -72,6 +76,9 @@ export interface GameSnapshot {
   sightingReports: import('../types').SightingReport[]
   /** Planned movement path for each task group (for route line rendering). */
   movementPaths: ReadonlyMap<string, readonly { q: number; r: number }[]>
+  /** Current aviation fuel pools — for HUD fuel gauges. */
+  alliedFuelPool: number
+  japaneseFuelPool: number
 }
 
 export interface TickResult {
@@ -102,11 +109,14 @@ export type OrderPayload =
   | { type: 'set-order'; taskGroupId: string; order: TaskGroupOrder; destination?: { q: number; r: number } }
   | { type: 'set-speed'; taskGroupId: string; speedKnots: number }
   | { type: 'set-destination'; taskGroupId: string; destination: { q: number; r: number } }
-  | { type: 'launch-strike'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number } }
+  | { type: 'launch-strike'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number }; oneWay?: boolean }
   | { type: 'launch-cap'; taskGroupId: string; squadronIds: string[] }
   | { type: 'launch-search'; taskGroupId: string; squadronIds: string[]; searchSector: number }
   | { type: 'launch-scout'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number } }
   | { type: 'recall-mission'; flightPlanId: string }
+
+/** Ship fuel (% of fuelLevel) consumed per 30-min step at full speed. */
+const SHIP_FUEL_PER_STEP_FULL = 0.5
 
 // ── GameEngine ─────────────────────────────────────────────────────────────
 
@@ -142,7 +152,7 @@ export class GameEngine {
     this.searchSystem = new SearchSystem(this.rng, initialState.aircraftTypes)
     this.fogOfWarSystem = new FogOfWarSystem()
     this.damageSystem = new DamageSystem(this.rng, initialState.shipClasses)
-    this.airOpsSystem = new AirOpsSystem(initialState.aircraftTypes)
+    this.airOpsSystem = new AirOpsSystem(initialState.aircraftTypes, initialState.shipClasses)
     this.combatSystem = new CombatSystem(this.rng, initialState.aircraftTypes, initialState.shipClasses, this.airOpsSystem)
     this.surfaceCombatSystem = new SurfaceCombatSystem(this.rng, initialState.shipClasses, this.damageSystem)
     this.victorySystem = new VictorySystem(initialState.shipClasses)
@@ -186,7 +196,9 @@ export class GameEngine {
           taskGroupId: payload.taskGroupId,
           squadronIds: payload.squadronIds,
           mission: 'strike',
-          targetHex: payload.targetHex
+          targetHex: payload.targetHex,
+          oneWay: payload.oneWay,
+          targetTaskGroupId: this.resolveTargetTG(payload.targetHex, payload.taskGroupId),
         }
         this.airOpsSystem.queueLaunch(order)
         break
@@ -282,6 +294,26 @@ export class GameEngine {
       }
     }
 
+    // 1b. Ship fuel consumption — fuelLevel decrements proportional to speed each step
+    for (const tg of this.state.taskGroups.values()) {
+      if (tg.speed <= 0) continue
+      for (const shipId of tg.shipIds) {
+        const ship = this.state.ships.get(shipId)
+        if (!ship || ship.status === 'sunk') continue
+        const sc = this.state.shipClasses.get(ship.classId)
+        const maxSpeed = sc?.maxSpeed ?? tg.speed
+        const fraction = maxSpeed > 0 ? tg.speed / maxSpeed : 0
+        ship.fuelLevel = Math.max(0, (ship.fuelLevel ?? 100) - SHIP_FUEL_PER_STEP_FULL * fraction)
+      }
+      // Sync TG fuelState as average of non-sunk ship fuel levels
+      const liveShips = tg.shipIds
+        .map(id => this.state.ships.get(id))
+        .filter((s): s is Ship => !!s && s.status !== 'sunk')
+      if (liveShips.length > 0) {
+        tg.fuelState = liveShips.reduce((sum, s) => sum + (s.fuelLevel ?? 100), 0) / liveShips.length
+      }
+    }
+
     // 2. Search & sighting
     const sightings = this.searchSystem.processStep(
       this.state.taskGroups,
@@ -305,12 +337,21 @@ export class GameEngine {
     for (const tg of this.state.taskGroups.values()) {
       taskGroupPositions.set(tg.id, tg.position)
     }
+    // Pass fuel pools as a mutable object so AirOpsSystem can gate and deduct
+    const fuelPools = { allied: this.state.alliedFuelPool, japanese: this.state.japaneseFuelPool }
+    const contacts = { allied: this.state.alliedContacts, japanese: this.state.japaneseContacts }
     const newPlans = this.airOpsSystem.processStep(
       this.state.squadrons,
       this.state.flightPlans,
       taskGroupPositions,
-      currentTime
+      this.state.taskGroups,
+      this.state.ships,
+      currentTime,
+      fuelPools,
+      contacts
     )
+    this.state.alliedFuelPool = fuelPools.allied
+    this.state.japaneseFuelPool = fuelPools.japanese
     for (const plan of newPlans) {
       if (plan.mission === 'strike') {
         this.state.pendingCombatEvents.push({
@@ -393,6 +434,12 @@ export class GameEngine {
       for (const shipId of sunkIds) {
         this.emitShipSunk(shipId, currentTime)
       }
+      // Extend rearm downtime for recovering squadrons on any hit carrier
+      for (const hit of strike.hits) {
+        this.airOpsSystem.applyStrikeRearmPenalty(
+          hit.shipId, this.state.ships, this.state.squadrons, this.state.taskGroups, currentTime
+        )
+      }
       // Record as combat event
       this.state.pendingCombatEvents.push({ type: 'strike-resolved', result: strike })
       // Individual ship-damaged events
@@ -450,6 +497,46 @@ export class GameEngine {
         })
       }
     }
+
+    // 9. Fuel exhaustion — both sides at zero (and finite) → scenario ends in a draw
+    if (!this.scenarioEnded &&
+        isFinite(this.state.alliedFuelPool) && this.state.alliedFuelPool <= 0 &&
+        isFinite(this.state.japaneseFuelPool) && this.state.japaneseFuelPool <= 0) {
+      this.scenarioEnded = true
+      this.timeSystem.pause()
+      this.events.emit('ScenarioEnded', {
+        winner: 'draw',
+        time: currentTime,
+        alliedPoints: 0,
+        japanesePoints: 0
+      })
+    }
+  }
+
+  // ── Target resolution ─────────────────────────────────────────────────────
+
+  /**
+   * Finds the enemy TG closest to targetHex (within 3 hexes) at the moment of
+   * a strike launch. The ID is stored in the FlightPlan so the engine can chase
+   * the TG as it moves each step.
+   */
+  private resolveTargetTG(targetHex: HexCoord, launchingTGId: string): string | undefined {
+    const launchingTG = this.state.taskGroups.get(launchingTGId)
+    if (!launchingTG) return undefined
+    const enemySide: Side = launchingTG.side === 'allied' ? 'japanese' : 'allied'
+
+    let bestId: string | undefined
+    let bestDist = 3  // max hex radius to match
+
+    for (const tg of this.state.taskGroups.values()) {
+      if (tg.side !== enemySide) continue
+      const dist = hexDistance(tg.position, targetHex)
+      if (dist < bestDist) {
+        bestId = tg.id
+        bestDist = dist
+      }
+    }
+    return bestId
   }
 
   // ── Snapshot ──────────────────────────────────────────────────────────────
@@ -477,7 +564,9 @@ export class GameEngine {
       combatEvents: [...this.state.pendingCombatEvents],
       gameEvents: [...this.state.pendingGameEvents],
       sightingReports: [...this.lastStepSightings],
-      movementPaths
+      movementPaths,
+      alliedFuelPool: this.state.alliedFuelPool,
+      japaneseFuelPool: this.state.japaneseFuelPool
     }
   }
 
@@ -499,6 +588,27 @@ export class GameEngine {
     const event = { type: 'ship-sunk' as const, shipId, taskGroupId, side: ship.side, at: time, hex }
     this.state.pendingCombatEvents.push(event)
     this.events.emit('ShipSunk', { shipId, taskGroupId, side: ship.side, time })
+
+    // Carrier sinking: destroy deck squadrons; airborne squadrons rerouted lazily
+    const sc = this.state.shipClasses.get(ship.classId)
+    if (sc?.type.includes('carrier')) {
+      this.airOpsSystem.handleCarrierSunk(
+        shipId,
+        taskGroupId,
+        this.state.squadrons,
+        this.state.ships,
+        this.state.taskGroups
+      )
+    }
+
+    // Oiler sinking: deduct fuel payload from the owning side's pool
+    if (sc?.type === 'oiler' && sc.fuelPayload) {
+      if (ship.side === 'allied') {
+        this.state.alliedFuelPool = Math.max(0, this.state.alliedFuelPool - sc.fuelPayload)
+      } else {
+        this.state.japaneseFuelPool = Math.max(0, this.state.japaneseFuelPool - sc.fuelPayload)
+      }
+    }
   }
 
   // ── Scout resolution ──────────────────────────────────────────────────────
@@ -597,6 +707,8 @@ export function createEmptyState(): MutableGameState {
     shipClasses: new Map(),
     victoryConditions: [],
     pendingCombatEvents: [],
-    pendingGameEvents: []
+    pendingGameEvents: [],
+    alliedFuelPool: Infinity,
+    japaneseFuelPool: Infinity
   }
 }
