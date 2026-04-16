@@ -269,31 +269,38 @@ export class AirOpsSystem {
         }
 
       } else if (plan.status === 'returning') {
-        // CAP/search have no targetHex — their returnEta was fixed at launch and is
-        // respected as-is. Only strikes (targetHex defined) need live re-anchoring.
-        if (!plan.targetHex) continue
-
+        // All returning missions (strike, CAP, scout, search…) re-anchor returnEta
+        // to the carrier's current position every step so planes always fly home to
+        // where the carrier actually is, not where it was at launch.
         const sq = squadrons.get(plan.squadronIds[0] ?? '')
         if (!sq) continue
         const homeTG = taskGroups.get(sq.taskGroupId)
         if (!homeTG) continue
 
         // ── Re-anchor returnEta to carrier's current position ─────────────
-        const currentOrigin = plan.currentHex ?? plan.targetHex
-        const distNm = hexDistance(currentOrigin, homeTG.position) * NM_PER_HEX
+        // fromHex: best estimate of where the planes are right now.
+        //   • Strikes:   currentHex was being lerped toward target, now near targetHex.
+        //   • CAP/search: currentHex = launchHex (orbit overhead the carrier).
+        const fromHex = plan.currentHex ?? plan.launchHex ?? homeTG.position
+        const distNm = hexDistance(fromHex, homeTG.position) * NM_PER_HEX
         const speed = this.slowestCruiseSpeed(plan.squadronIds, squadrons)
-        const remainingMin = speed > 0 ? (distNm / speed) * 60 : 30
-        plan.returnEta = minutesToGameTime(nowMin + Math.max(30, Math.ceil(remainingMin / 30) * 30))
+        const remainingMin = speed > 0 ? (distNm / speed) * 60 : 0
 
-        // ── Lerp currentHex from strike point toward carrier ──────────────
-        if (plan.eta && plan.returnEta) {
-          const etaMin = gameTimeToMinutes(plan.eta)
-          const returnEtaMin = gameTimeToMinutes(plan.returnEta)
-          const total = returnEtaMin - etaMin
-          const t = total > 0 ? Math.min(1, Math.max(0, (nowMin - etaMin) / total)) : 1
-          plan.currentHex = lerpHex(plan.targetHex, homeTG.position, t)
-          plan.currentHexTime = currentTime
+        // If planes are effectively at the carrier already (< 15 min away),
+        // set returnEta = now so processRecoveries fires this step.
+        if (remainingMin < 15) {
+          plan.returnEta = currentTime
+        } else {
+          plan.returnEta = minutesToGameTime(nowMin + Math.ceil(remainingMin / 30) * 30)
         }
+
+        // ── Lerp currentHex from current position toward carrier ──────────
+        const baseMin = plan.eta ? gameTimeToMinutes(plan.eta) : (nowMin - 30)
+        const returnEtaMin = gameTimeToMinutes(plan.returnEta)
+        const total = returnEtaMin - baseMin
+        const t = total > 0 ? Math.min(1, Math.max(0, (nowMin - baseMin) / total)) : 1
+        plan.currentHex = lerpHex(fromHex, homeTG.position, t)
+        plan.currentHexTime = currentTime
       }
     }
   }

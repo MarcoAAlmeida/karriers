@@ -4,6 +4,19 @@ Most recent sprint always on top.
 
 ---
 
+## Sprint 23 — Fuel Gauge HUD *(Bug 5)*
+
+**Goal:** Both sides' fuel states are always visible in the TopStatusBar.
+
+- `useForcesStore` gains `alliedFuelPool`, `japaneseFuelPool` (synced from snapshot each step), `initialAlliedFuelPool`/`initialJapaneseFuelPool` (set once at scenario load), and `alliedFuelPct`/`japaneseFuelPct` computeds (0–100, Infinity-safe).
+- New `initFuelPools(allied, japanese)` action on `useForcesStore`; called from `useScenarioLoader.loadScenario` before the first `syncFromSnapshot`.
+- `FuelGauges.vue`: two horizontal progress bars — US (sky-blue) and IJN (rose-red). Amber warning pulse via `animate-pulse` at ≤ 20%; bar turns slate and label reads "GROUNDED" at 0%. Hidden (`v-if`) when `gameStore.phase === 'menu'`.
+- `TopStatusBar.vue`: `<FuelGauges />` injected into the flex row between title and clock.
+- `__GAME_STATE__` bridge: `alliedFuelPct` and `japaneseFuelPct` exposed for Playwright.
+- **Tests:** pcts start at 100 after initFuelPools; decrements proportionally on syncFromSnapshot; warning styling at ≤ 20%; GROUNDED label and danger styling at 0%. 131/131 unit tests across 13 files — all green in < 1 s. 25/25 Playwright E2E tests passing.
+
+---
+
 ## Sprint 22 — Dynamic Strike Targeting *(Bug 4)*
 
 **Goal:** Strikes chase moving targets. Planes come home to where the carrier is, not where it was. Bezier arcs always originate from the strike group's live in-flight hex — never from the original launch position.

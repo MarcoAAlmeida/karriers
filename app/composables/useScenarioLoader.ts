@@ -16,6 +16,9 @@ export function useScenarioLoader() {
     forcesStore.clear()
     intelStore.clear()
 
+    // Snapshot initial fuel pools before any steps run (used to compute gauge %)
+    forcesStore.initFuelPools(scenario.alliedFuelPool ?? 0, scenario.japaneseFuelPool ?? 0)
+
     const state = buildState(scenario)
     const engine = gameStore.initEngine(scenario.startTime, scenario.endTime, state)
 

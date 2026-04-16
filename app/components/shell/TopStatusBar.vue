@@ -22,6 +22,9 @@
 
     <div class="flex-1" />
 
+    <!-- Fuel gauges (hidden in menu) -->
+    <FuelGauges />
+
     <!-- Passive game clock -->
     <span class="font-mono text-slate-300 text-xs tabular-nums">{{ gameTime }}</span>
 

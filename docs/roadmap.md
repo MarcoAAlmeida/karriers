@@ -5,7 +5,7 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 ---
 
-## Current State (end of Sprint 22)
+## Current State (end of Sprint 23)
 
 - ✅ Full engine: movement, search, fog of war, air ops, combat, damage, victory
 - ✅ PixiJS renderer: hex grid, unit tokens, animated strike dots (outbound + return), flight path arcs always originating from the strike group's live in-flight position, sunk-ship markers (red ✕ diamond), FOW contacts at lastKnownHex, selection ring
@@ -28,7 +28,8 @@ Completed sprint history lives in `docs/done/sprints.md`.
 - ✅ Side fuel pool: `alliedFuelPool` / `japaneseFuelPool` in `MutableGameState`; initialised from JSON scenario; `oiler` ship type with `fuelPayload`; pool decrements on launch and oiler sinking; fuel-exhaustion gates launches; both-sides-zero ends game
 - ✅ CAP endurance: 90-min orbit timer fires automatically; per-mission rearm cycle (30–60 min) gates next launch; strike hits on carrier extend recovering-squadron downtime; `Ship.fuelLevel` / `TaskGroup.fuelState` decrement each step proportional to speed
 - ✅ Dynamic strike targeting: `targetHex` chases moving TG via live contacts (or holds last known hex under FOW); `currentHex` lerped each step for smooth arc origin; `returnEta` re-anchored to carrier's current position on each return-leg step; bezier arcs redraw from in-flight position
-- ✅ Vitest: 127 tests across 12 files — all green in < 1 s
+- ✅ Fuel gauge HUD: `TopStatusBar` shows US (blue) and IJN (red) fuel bars; amber warning pulse at ≤ 20%; GROUNDED label at zero; hidden in menu; `alliedFuelPct`/`japaneseFuelPct` exposed in `__GAME_STATE__`
+- ✅ Vitest: 131 tests across 13 files — all green in < 1 s
 - ✅ Playwright E2E: 25/25 tests passing; `pnpm test:e2e` fully self-contained
 - ❌ Scramble alert (incoming strike warning + one-click CAP launch for player)
 - ❌ MapTiler basemap
@@ -45,18 +46,6 @@ Completed sprint history lives in `docs/done/sprints.md`.
 ---
 
 # Upcoming Sprints
-
-## Sprint 23 — Fuel Gauge HUD *(Bug 5)*
-
-**Goal:** Both sides' fuel states are always visible.
-
-- Add Allied and IJN fuel gauges to `TopStatusBar` (or `NavSidebar`) using Nuxt UI slider in read-only mode.
-- Color-coded: blue Allied, red IJN; relative percentage only (absolute values are scenario-internal).
-- Pulse / color-shift warning at ≤ 20% remaining.
-- Gauge goes dark/empty at zero; side label shows "GROUNDED".
-- **Tests:** Gauge updates reactively on mission launch; gauge updates on aircraft loss; warning state activates at ≤ 20%; gauge shows GROUNDED at zero.
-
----
 
 ## Sprint 24 — Evolutionary Parameter Tuner *(Item 3)*
 

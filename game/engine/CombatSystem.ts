@@ -101,12 +101,26 @@ export class CombatSystem {
   ): StrikeResult | null {
     if (!plan.targetHex) return null
 
-    // Find enemy TG at target hex
-    const targetTG = this.findTaskGroupAtHex(plan.targetHex, taskGroups, plan.side === 'allied' ? 'japanese' : 'allied')
+    const enemySide = plan.side === 'allied' ? 'japanese' : 'allied'
+
+    // Prefer direct lookup by tracked TG ID — handles moving targets correctly.
+    // Fall back to hex lookup for strikes without a tracked TG (e.g. land-based targets).
+    let targetTG: TaskGroup | undefined
+    if (plan.targetTaskGroupId) {
+      const byId = taskGroups.get(plan.targetTaskGroupId)
+      if (byId && byId.side === enemySide) targetTG = byId
+    }
+    if (!targetTG) {
+      targetTG = this.findTaskGroupAtHex(plan.targetHex, taskGroups, enemySide)
+    }
     if (!targetTG) {
       plan.status = 'returning'
       return null
     }
+
+    // Snap targetHex to where the strike actually resolves so the return arc
+    // originates from the correct position.
+    plan.targetHex = { ...targetTG.position }
 
     const attackerSquadrons = plan.squadronIds
       .map(id => squadrons.get(id))

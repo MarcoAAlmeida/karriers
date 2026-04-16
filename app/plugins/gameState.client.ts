@@ -117,7 +117,10 @@ export default defineNuxtPlugin(() => {
         alliedContactCount: intelStore.alliedContacts.size,
         sightingLogLength: intelStore.sightingLog.length,
         combatLogLength: intelStore.combatLog.length,
-        selectedFlightPlanId: mapStore.selectedFlightPlanId
+        selectedFlightPlanId: mapStore.selectedFlightPlanId,
+
+        alliedFuelPct: forcesStore.alliedFuelPct,
+        japaneseFuelPct: forcesStore.japaneseFuelPct
       }
     },
     configurable: true,
