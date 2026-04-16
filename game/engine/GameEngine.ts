@@ -498,18 +498,28 @@ export class GameEngine {
       }
     }
 
-    // 9. Fuel exhaustion — both sides at zero (and finite) → scenario ends in a draw
-    if (!this.scenarioEnded &&
-        isFinite(this.state.alliedFuelPool) && this.state.alliedFuelPool <= 0 &&
-        isFinite(this.state.japaneseFuelPool) && this.state.japaneseFuelPool <= 0) {
-      this.scenarioEnded = true
-      this.timeSystem.pause()
-      this.events.emit('ScenarioEnded', {
-        winner: 'draw',
-        time: currentTime,
-        alliedPoints: 0,
-        japanesePoints: 0
-      })
+    // 9. Fuel exhaustion — a grounded fleet cannot fight; opponent wins
+    if (!this.scenarioEnded) {
+      const alliedGrounded = isFinite(this.state.alliedFuelPool) && this.state.alliedFuelPool <= 0
+      const japaneseGrounded = isFinite(this.state.japaneseFuelPool) && this.state.japaneseFuelPool <= 0
+      if (alliedGrounded || japaneseGrounded) {
+        this.scenarioEnded = true
+        this.timeSystem.pause()
+        let winner: 'allied' | 'japanese' | 'draw'
+        if (alliedGrounded && japaneseGrounded) {
+          winner = 'draw'
+        } else if (alliedGrounded) {
+          winner = 'japanese'
+        } else {
+          winner = 'allied'
+        }
+        this.events.emit('ScenarioEnded', {
+          winner,
+          time: currentTime,
+          alliedPoints: 0,
+          japanesePoints: 0
+        })
+      }
     }
   }
 

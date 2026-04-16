@@ -88,7 +88,9 @@ clear(): void
 | `ShipDamaged` | `CombatEvent` | When a ship takes a hit during combat resolution |
 | `ShipSunk` | `{ shipId, taskGroupId, side, time }` | When a ship's status transitions to `'sunk'` |
 | `StrikeInbound` | `{ flightPlanId, targetTaskGroupId, time }` | When an airborne strike reaches its target ETA |
-| `ScenarioEnded` | `{ winner: Side \| 'draw', time }` | Once, when VictorySystem finds a decisive result; engine auto-pauses |
+| `EnemyStrikeDetected` | `{ flightPlanId, targetHex, estimatedArrivalTime }` | When a Japanese strike is launched — warns the Allied player |
+| `ScoutContactRevealed` | `{ flightPlanId, targetHex, contactFound, side, time }` | When a scout mission resolves at its target hex |
+| `ScenarioEnded` | `{ winner: Side \| 'draw', time, alliedPoints, japanesePoints }` | Once, when VictorySystem finds a decisive result; engine auto-pauses |
 
 `ScenarioEnded` is guarded by a `scenarioEnded` boolean so it fires exactly once even if `runStep()` is called multiple times in the same tick.
 
@@ -110,6 +112,8 @@ interface GameSnapshot {
   gameEvents:       GameEvent[]
   sightingReports:  SightingReport[]
   movementPaths:    ReadonlyMap<string, readonly HexCoord[]>
+  alliedFuelPool:   number     // current aviation fuel pool — for HUD gauges
+  japaneseFuelPool: number
 }
 ```
 
@@ -136,18 +140,21 @@ interface SidedSnapshot {
 
 ## 4. Step Sequence
 
-`GameEngine.runStep()` executes these subsystems in order every 30 simulated minutes:
+`GameEngine.runStep()` executes these subsystems in order every 30 simulated minutes.
+`TimeSystem.tick()` advances `currentTime` before `runStep()` is called; it is not a step inside `runStep()`.
 
 ```
-1. TimeSystem           advance currentTime by 30 min
-2. MovementSystem       reposition all task groups
-3. SearchSystem         resolve sector searches → SightingReport[]
-4. AirOpsSystem         process deck cycles; process pending launches
-5. FogOfWarSystem       decay old contacts; integrate new sightings
-6. CombatSystem         resolve strikes whose ETA ≤ currentTime
-7. DamageSystem         fire spread, flooding, damage control per ship
-8. SurfaceCombatSystem  trigger if opposing TGs share a hex
-9. VictorySystem        evaluate all victory conditions
+1.   MovementSystem     reposition all task groups
+1b.  Ship fuel          decrement fuelLevel per ship proportional to speed; sync TG fuelState
+2.   SearchSystem       resolve sector searches → SightingReport[]
+3.   FogOfWarSystem     decay old contacts; integrate new sightings
+4.   AirOpsSystem       orbit expiry → position update → recoveries → spots → queued launches
+4b.  Scout arrivals     resolve scout missions that reached their target hex → ContactRecord
+5.   CombatSystem       resolve strikes whose ETA ≤ currentTime
+6.   DamageSystem       fire spread, flooding, damage control per ship
+7.   SurfaceCombatSystem trigger if opposing TGs share a hex
+8.   VictorySystem      evaluate all victory conditions
+9.   Fuel-exhaustion    grounded fleet check → opponent wins (or draw if both)
 ```
 
 After all steps in the tick complete, the engine builds a `GameSnapshot`, emits `StepComplete`, then emits individual `SightingDetected` events, and clears `pendingCombatEvents` / `pendingGameEvents`.
@@ -165,6 +172,7 @@ set-destination // set TG.destination; replans movement path
 launch-strike   // queue launch of squadronIds toward targetHex
 launch-cap      // queue CAP assignment for squadronIds
 launch-search   // queue search mission for squadronIds in searchSector
+launch-scout    // queue point-scout mission for squadronIds toward a specific targetHex
 recall-mission  // force a FlightPlan to begin returning
 ```
 
@@ -287,15 +295,51 @@ hangared → spotted (SPOT_STEPS=1) → airborne → recovering (RECOVERY_STEPS=
 | `SPOT_STEPS` | 1 | Steps to spot aircraft before launch |
 | `RECOVERY_STEPS` | 1 | Steps to recover after landing |
 | `FUEL_RESERVE` | 0.15 | Minimum fuel fraction; launches beyond range are rejected |
+| `CAP_ORBIT_RANGE_HEXES` | 5 | Virtual range (hexes) used to compute fuel cost for CAP (no fixed destination) |
+| `OVERCAP_HARD_LIMIT` | 1.2 | Deck occupancy fraction above which recovering aircraft ditch |
+| `OVERCAP_PENALTY_MINUTES` | 60 | Extra readyTime added when recovering to an over-capacity deck |
+| `STRIKE_REARM_PENALTY_MINUTES` | 60 | Extra readyTime added to recovering squadrons when their carrier takes a strike hit |
+
+### Aviation fuel cost
+Each launch deducts `aircraftCount × hexesTravelled × MISSION_FUEL_RATE[mission]` from the side's fuel pool. CAP uses `CAP_ORBIT_RANGE_HEXES` as its distance proxy. Launches are rejected when `fuelPool ≤ 0`.
+
+| Mission | Fuel rate (units/aircraft/hex) |
+|---|---|
+| strike, cap, intercept | 2 |
+| scout, search, escort, asw | 1 |
+
+### Per-mission rearm times
+After recovery, a squadron's `readyTime` is gated by `REARM_MINUTES` for that mission type. A strike hit on the carrier extends all recovering squadrons' `readyTime` by a further `STRIKE_REARM_PENALTY_MINUTES`.
+
+| Mission | Rearm time |
+|---|---|
+| cap, intercept | 30 min |
+| strike, escort | 60 min |
+| scout, search, asw | 30 min |
+
+### processStep() sub-steps
+Each call to `processStep()` runs these stages in order:
+1. **Orbit expiry** — CAP and search plans with `eta ≤ currentTime` transition to `'returning'`
+2. **Live position update** — airborne plans chase their target TG (via active contact) and lerp `currentHex`; returning plans re-anchor `returnEta` to the carrier's current position
+3. **Recoveries** — plans whose `returnEta` has passed land squadrons and set `readyTime`
+4. **Spot advance** — spotted squadrons advance to `'airborne'`
+5. **Launch queue** — pending `LaunchOrder`s are executed; new `FlightPlan`s returned
 
 ### Launch queue
-Orders arrive via `queueLaunch(LaunchOrder)` (called by `GameEngine.issueOrder` for `launch-strike`, `launch-cap`, `launch-search`). Each step, `processStep()` attempts to process queued launches:
+Orders arrive via `queueLaunch(LaunchOrder)` (called by `GameEngine.issueOrder` for `launch-strike`, `launch-cap`, `launch-search`, `launch-scout`). Each step, `processStep()` attempts to process queued launches:
 - Computes ETA and returnETA from hex distance + aircraft speed
 - Creates a `FlightPlan` with status `'planned'` → `'airborne'` once squadrons are spotted
+- Stores `launchHex`, `currentHex`, `currentHexTime`, and `targetTaskGroupId` for live tracking
 - Squadrons with insufficient fuel for the round trip (plus reserve) are rejected
+
+### Scout missions
+Scout plans (`mission === 'scout'`) fly to a specific `targetHex`. When `eta` is reached, `processScoutArrivals()` transitions the plan to `'returning'` and `GameEngine` calls `resolveScoutMission()` to check for enemy TGs within 3 hexes of `targetHex`. A `ContactRecord` is created or updated in the owning side's contacts map, and a `ScoutContactRevealed` event is emitted.
 
 ### Recall
 `recallMission(flightPlanId, flightPlans, currentTime)` forces returning squadrons early; they arrive at `currentTime + travelTime` with reduced fuel.
+
+### Strike rearm penalty
+`applyStrikeRearmPenalty(carrierShipId, ...)` is called by `GameEngine` for every ship hit during a strike resolution. If the hit ship is a carrier, all `'recovering'` squadrons in that carrier's TG have their `readyTime` extended by `STRIKE_REARM_PENALTY_MINUTES`.
 
 ---
 
@@ -304,6 +348,9 @@ Orders arrive via `queueLaunch(LaunchOrder)` (called by `GameEngine.issueOrder` 
 **File:** `game/engine/CombatSystem.ts`
 
 Resolves air strikes whose `ETA ≤ currentTime`.
+
+### Target resolution
+At strike resolution time the engine first looks up the TG by `plan.targetTaskGroupId` (set at launch time via `resolveTargetTG`). This allows the strike to chase a moving target. If the TG has moved off the original launch hex the strike hits it at its current position. If no `targetTaskGroupId` is set (e.g. land targets), it falls back to a hex-based lookup. On resolution `plan.targetHex` is snapped to the TG's actual position so the return flight arc originates from the correct point.
 
 ### Strike resolution pipeline
 
@@ -385,6 +432,18 @@ Evaluated every step. Checks all `VictoryCondition[]` from the scenario.
 ### Winner determination
 1. Sweep all conditions — first side to satisfy all its conditions wins immediately
 2. If `currentTime ≥ endTime`, winner is the side with higher accumulated points
+
+### Fuel-exhaustion victory (`GameEngine.runStep` step 9)
+
+Evaluated after the VictorySystem check, before emitting `StepComplete`. Only applies when fuel pools are finite (i.e. not `Infinity`).
+
+| Condition | Result |
+|---|---|
+| Allied fuel ≤ 0, Japanese fuel > 0 | Japanese wins (Allied fleet grounded) |
+| Japanese fuel ≤ 0, Allied fuel > 0 | Allied wins (Japanese fleet grounded) |
+| Both fuel ≤ 0 simultaneously | Draw |
+
+A grounded fleet cannot launch any further aircraft (`AirOpsSystem` rejects launches when `fuelPool ≤ 0`), so the side that still has fuel wins by default.
 
 ---
 

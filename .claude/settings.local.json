@@ -50,7 +50,10 @@
       "WebFetch(domain:strudel.js.org)",
       "Bash(findstr :3000)",
       "Bash(grep -A 5 \"mapBounds\\\\|maxQ\\\\|maxR\" /c/Users/marco/pub/karriers/game/data/scenarios/*.ts)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(grep -E \"^\\\\s+\\\\{$\" /c/Users/marco/pub/karriers/game/data/aircraftTypes.ts -A 8)",
+      "Bash(npx vitest *)",
+      "Bash(python *)"
     ]
   }
 }
