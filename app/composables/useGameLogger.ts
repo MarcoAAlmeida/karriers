@@ -21,7 +21,7 @@ function serializeSnapshot(obs: SidedSnapshot): unknown {
     gameEvents: obs.gameEvents,
     sightingReports: obs.sightingReports,
     alliedFuelPool: isFinite(obs.alliedFuelPool) ? obs.alliedFuelPool : -1,
-    japaneseFuelPool: isFinite(obs.japaneseFuelPool) ? obs.japaneseFuelPool : -1,
+    japaneseFuelPool: isFinite(obs.japaneseFuelPool) ? obs.japaneseFuelPool : -1
   }
 }
 
@@ -41,7 +41,7 @@ export function useGameLogger() {
       stepLog.push({
         stepNumber: stepNumber++,
         alliedSnapshotJson: JSON.stringify(serializeSnapshot(engine.getObservation('allied'))),
-        japaneseSnapshotJson: JSON.stringify(serializeSnapshot(engine.getObservation('japanese'))),
+        japaneseSnapshotJson: JSON.stringify(serializeSnapshot(engine.getObservation('japanese')))
       })
     })
 
@@ -58,11 +58,10 @@ export function useGameLogger() {
             durationSteps: stepNumber,
             alliedPoints: evt.alliedPoints,
             japanesePoints: evt.japanesePoints,
-            steps: stepLog,
-          },
+            steps: stepLog
+          }
         })
-      }
-      catch (err) {
+      } catch (err) {
         console.warn('[GameLogger] Failed to log game:', err)
       }
     })

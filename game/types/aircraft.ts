@@ -15,19 +15,19 @@ export type MissionType = 'strike' | 'search' | 'cap' | 'scout' | 'asw' | 'inter
 export type FlightStatus = 'planned' | 'airborne' | 'inbound' | 'returning' | 'recovered' | 'lost'
 
 export interface AircraftType {
-  id: number               // 1–63
+  id: number // 1–63
   name: string
   side: Side
   role: AircraftRole
-  maxRange: number         // nautical miles (one-way)
-  cruiseSpeed: number      // knots
-  maxSpeed: number         // knots
-  climbRate: number        // feet per minute
-  bombLoad: number         // lbs (max)
+  maxRange: number // nautical miles (one-way)
+  cruiseSpeed: number // knots
+  maxSpeed: number // knots
+  climbRate: number // feet per minute
+  bombLoad: number // lbs (max)
   torpedoCapable: boolean
-  aaRating: number         // effectiveness vs enemy aircraft 0–100
-  bombingAccuracy: number  // base accuracy 0–100, modified by experience
-  experienceModifiers: Record<PilotExperience, number>  // multiplier on hit probability
+  aaRating: number // effectiveness vs enemy aircraft 0–100
+  bombingAccuracy: number // base accuracy 0–100, modified by experience
+  experienceModifiers: Record<PilotExperience, number> // multiplier on hit probability
 }
 
 export interface Squadron {
@@ -35,15 +35,15 @@ export interface Squadron {
   aircraftTypeId: number
   name: string
   side: Side
-  taskGroupId: string        // carrier or land base they're assigned to
-  aircraftCount: number      // current operational aircraft
-  maxAircraftCount: number   // full complement
+  taskGroupId: string // carrier or land base they're assigned to
+  aircraftCount: number // current operational aircraft
+  maxAircraftCount: number // full complement
   pilotExperience: PilotExperience
   deckStatus: DeckStatus
-  fuelLoad: number           // percentage 0–100
+  fuelLoad: number // percentage 0–100
   ordnanceLoaded: OrdnanceType
   currentMissionId?: string
-  readyTime?: GameTime       // when this squadron will be ready again
+  readyTime?: GameTime // when this squadron will be ready again
 }
 
 export interface FlightPlan {
@@ -51,15 +51,15 @@ export interface FlightPlan {
   squadronIds: string[]
   mission: MissionType
   side: Side
-  targetHex?: HexCoord       // strike target or CAP station — updated live each step
-  searchSector?: number      // 0–7
+  targetHex?: HexCoord // strike target or CAP station — updated live each step
+  searchSector?: number // 0–7
   launchTime: GameTime
-  eta?: GameTime             // estimated time on target
+  eta?: GameTime // estimated time on target
   returnEta?: GameTime
-  escortMissionId?: string   // if this is a strike, fighters may escort
+  escortMissionId?: string // if this is a strike, fighters may escort
   status: FlightStatus
-  aircraftLost: number       // cumulative losses on this mission
-  isOneWay?: boolean         // aircraft are not expected to return after striking
+  aircraftLost: number // cumulative losses on this mission
+  isOneWay?: boolean // aircraft are not expected to return after striking
   /** Carrier hex at the moment of launch (fixed). Used to compute outbound flight progress. */
   launchHex?: HexCoord
   /** Live in-flight hex position — updated by the engine every step. */

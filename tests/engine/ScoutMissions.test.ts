@@ -1,21 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { GameEngine, createEmptyState } from '@game/engine/GameEngine'
-import type { MutableGameState } from '@game/engine/GameEngine'
-import type { TaskGroup, Ship, Squadron, GameTime, ShipClass } from '@game/types'
+import type { MutableGameState, GameSnapshot, OrderPayload } from '@game/engine/GameEngine'
+import type { TaskGroup, Ship, Squadron, GameTime, ShipClass, FlightPlan } from '@game/types'
 import { AIRCRAFT_TYPES } from '@game/data/aircraftTypes'
 import { JapaneseAI } from '@game/engine/JapaneseAI'
-import type { GameSnapshot, OrderPayload } from '@game/engine/GameEngine'
-import type { ContactRecord, FlightPlan } from '@game/types'
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
-const T0: GameTime = { day: 1, hour: 6,  minute: 0 }
+const T0: GameTime = { day: 1, hour: 6, minute: 0 }
 const T1: GameTime = { day: 1, hour: 23, minute: 59 }
 
 function makeShipClass(id: number, type: string): ShipClass {
   return {
     id,
     name: type,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     type: type as any,
     displacementTons: 20000,
     maxSpeed: 30,
@@ -42,7 +41,7 @@ function makeShip(id: string, classId: number, tgId: string, side: 'allied' | 'j
   }
 }
 
-function makeTG(id: string, side: 'allied' | 'japanese', pos: { q: number; r: number }): TaskGroup {
+function makeTG(id: string, side: 'allied' | 'japanese', pos: { q: number, r: number }): TaskGroup {
   return {
     id,
     name: id,
@@ -173,7 +172,7 @@ describe('Scout Missions — Sprint 20', () => {
       type: 'launch-scout',
       taskGroupId: 'tf-16',
       squadronIds: ['os2u-scout'],
-      targetHex: { q: 27, r: 51 }   // Japanese TF position
+      targetHex: { q: 27, r: 51 } // Japanese TF position
     })
 
     // Advance until scout arrives (may take several steps depending on range/speed)
@@ -207,7 +206,7 @@ describe('Scout Missions — Sprint 20', () => {
       type: 'launch-scout',
       taskGroupId: 'tf-16',
       squadronIds: ['os2u-scout'],
-      targetHex: { q: 42, r: 38 }   // no TF here
+      targetHex: { q: 42, r: 38 } // no TF here
     })
 
     for (let i = 0; i < 12; i++) {
@@ -287,7 +286,7 @@ describe('JapaneseAI — Sprint 18/20 additions', () => {
   function makeJakeSq(overrides: Partial<Squadron> = {}): Squadron {
     return {
       id: 'tone-scout',
-      aircraftTypeId: 46,   // E13A Jake — scout role
+      aircraftTypeId: 46, // E13A Jake — scout role
       name: 'Tone Scout',
       side: 'japanese',
       taskGroupId: 'kido-butai',
@@ -304,7 +303,7 @@ describe('JapaneseAI — Sprint 18/20 additions', () => {
   function makeZeroSq(overrides: Partial<Squadron> = {}): Squadron {
     return {
       id: 'akagi-fighter',
-      aircraftTypeId: 30,   // A6M Zero — fighter role
+      aircraftTypeId: 30, // A6M Zero — fighter role
       name: 'Akagi Zeros',
       side: 'japanese',
       taskGroupId: 'kido-butai',
@@ -332,6 +331,7 @@ describe('JapaneseAI — Sprint 18/20 additions', () => {
     const orders = collectOrders(snap)
     const scoutOrder = orders.find(o => o.type === 'launch-scout')
     expect(scoutOrder).toBeDefined()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((scoutOrder as any).squadronIds).toContain('tone-scout')
   })
 
@@ -372,7 +372,7 @@ describe('JapaneseAI — Sprint 18/20 additions', () => {
       squadronIds: ['vb-6'],
       mission: 'strike',
       side: 'allied',
-      targetHex: { q: 27, r: 51 },  // exact TG position
+      targetHex: { q: 27, r: 51 }, // exact TG position
       launchTime: TIME,
       status: 'airborne',
       aircraftLost: 0
@@ -387,13 +387,14 @@ describe('JapaneseAI — Sprint 18/20 additions', () => {
     const orders = collectOrders(snap)
     const capOrder = orders.find(o => o.type === 'launch-cap')
     expect(capOrder).toBeDefined()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((capOrder as any).squadronIds).toContain('akagi-fighter')
   })
 
   it('does not launch CAP when CAP is already airborne', () => {
     const tg = makeTGSnap()
     const valSq = makeValSq()
-    const zeroSq = makeZeroSq({ deckStatus: 'airborne' })   // already up
+    const zeroSq = makeZeroSq({ deckStatus: 'airborne' }) // already up
 
     const alliedStrike: FlightPlan = {
       id: 'fp-allied',

@@ -1,11 +1,7 @@
-import type { GameTime, WeatherZone } from '../types'
-import type { Side, TaskGroup } from '../types'
-import type { AircraftType, Squadron } from '../types'
-import type { SightingReport, ContactType } from '../types'
+import type { GameTime, WeatherZone, Side, TaskGroup, AircraftType, Squadron, SightingReport, ContactType, HexCoord } from '../types'
 import type { Rng } from '../utils/dice'
-import { rollD100, chance } from '../utils/dice'
+import { chance } from '../utils/dice'
 import { hexDistance, hexesInRange, coordKey, NM_PER_HEX } from '../utils/hexMath'
-import type { HexCoord } from '../types'
 import { AIRCRAFT_TYPES } from '../data/aircraftTypes'
 import type { ScenarioParams } from '../types/scenario'
 import { DEFAULT_SCENARIO_PARAMS } from '../types/scenario'
@@ -222,7 +218,7 @@ export class SearchSystem {
     return 'surface-force'
   }
 
-  private getBestExperience(tg: TaskGroup, _allGroups: ReadonlyMap<string, TaskGroup>): string {
+  private getBestExperience(_tg: TaskGroup, _allGroups: ReadonlyMap<string, TaskGroup>): string {
     // Without full ship→squadron lookup here, default to 'trained'
     return 'trained'
   }

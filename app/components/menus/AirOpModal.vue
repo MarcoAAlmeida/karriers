@@ -1,13 +1,23 @@
 <template>
-  <UModal v-model:open="open" title="Air Operations" :ui="{ width: 'sm:max-w-xl' }">
+  <UModal
+    v-model:open="open"
+    title="Air Operations"
+    :ui="{ content: 'sm:max-w-xl' }"
+  >
     <template #content>
       <div class="p-4">
-        <UTabs v-model="activeTab" :items="tabs" class="w-full">
-
+        <UTabs
+          v-model="activeTab"
+          :items="tabs"
+          class="w-full"
+        >
           <!-- Deck Status tab -->
           <template #deck>
             <div class="mt-3 space-y-1">
-              <div v-if="!squadrons.length" class="text-sm text-gray-500 text-center py-4">
+              <div
+                v-if="!squadrons.length"
+                class="text-sm text-gray-500 text-center py-4"
+              >
                 No squadrons assigned.
               </div>
               <div
@@ -16,10 +26,18 @@
                 class="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-900 text-sm"
               >
                 <div class="flex-1 min-w-0">
-                  <p class="text-white font-medium truncate">{{ sq.name }}</p>
-                  <p class="text-gray-500 text-xs">{{ sq.aircraftCount }} aircraft · {{ sq.pilotExperience }}</p>
+                  <p class="text-white font-medium truncate">
+                    {{ sq.name }}
+                  </p>
+                  <p class="text-gray-500 text-xs">
+                    {{ sq.aircraftCount }} aircraft · {{ sq.pilotExperience }}
+                  </p>
                 </div>
-                <UBadge :color="deckStatusColor(sq.deckStatus)" variant="subtle" size="sm">
+                <UBadge
+                  :color="deckStatusColor(sq.deckStatus)"
+                  variant="subtle"
+                  size="sm"
+                >
                   {{ sq.deckStatus }}
                 </UBadge>
               </div>
@@ -28,8 +46,14 @@
 
           <!-- Airborne tab -->
           <template #airborne>
-            <div data-testid="air-ops-airborne-content" class="mt-3 space-y-1">
-              <div v-if="!flightPlans.length" class="text-sm text-gray-500 text-center py-4">
+            <div
+              data-testid="air-ops-airborne-content"
+              class="mt-3 space-y-1"
+            >
+              <div
+                v-if="!flightPlans.length"
+                class="text-sm text-gray-500 text-center py-4"
+              >
                 No active missions.
               </div>
               <div
@@ -38,13 +62,19 @@
                 class="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-900 text-sm"
               >
                 <div class="flex-1 min-w-0">
-                  <p class="text-white font-medium uppercase">{{ plan.mission }}</p>
+                  <p class="text-white font-medium uppercase">
+                    {{ plan.mission }}
+                  </p>
                   <p class="text-gray-500 text-xs">
                     {{ plan.squadronIds.length }} squadron(s)
                     <span v-if="plan.targetHex"> · target {{ plan.targetHex.q }},{{ plan.targetHex.r }}</span>
                   </p>
                 </div>
-                <UBadge :color="missionStatusColor(plan.status)" variant="subtle" size="sm">
+                <UBadge
+                  :color="missionStatusColor(plan.status)"
+                  variant="subtle"
+                  size="sm"
+                >
                   {{ plan.status }}
                 </UBadge>
                 <UButton
@@ -62,27 +92,43 @@
           <!-- CAP tab -->
           <template #cap>
             <div class="mt-3 space-y-4">
-
               <!-- Active CAP -->
               <div v-if="activeCAPSquadrons.length">
-                <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Active CAP</p>
+                <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">
+                  Active CAP
+                </p>
                 <div
                   v-for="sq in activeCAPSquadrons"
                   :key="sq.id"
                   class="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-900 text-sm"
                 >
                   <div class="flex-1 min-w-0">
-                    <p class="text-white font-medium">{{ sq.name }}</p>
-                    <p class="text-gray-500 text-xs">{{ sq.aircraftCount }} aircraft on CAP</p>
+                    <p class="text-white font-medium">
+                      {{ sq.name }}
+                    </p>
+                    <p class="text-gray-500 text-xs">
+                      {{ sq.aircraftCount }} aircraft on CAP
+                    </p>
                   </div>
-                  <UBadge color="success" variant="subtle" size="sm">airborne</UBadge>
+                  <UBadge
+                    color="success"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    airborne
+                  </UBadge>
                 </div>
               </div>
 
               <!-- Launch CAP -->
               <div>
-                <p class="text-xs text-gray-400 uppercase tracking-wide mb-2">Launch Fighters</p>
-                <div v-if="!availableForCAP.length" class="text-sm text-gray-500 text-center py-2">
+                <p class="text-xs text-gray-400 uppercase tracking-wide mb-2">
+                  Launch Fighters
+                </p>
+                <div
+                  v-if="!availableForCAP.length"
+                  class="text-sm text-gray-500 text-center py-2"
+                >
                   No fighter squadrons available (must be hangared).
                 </div>
                 <div
@@ -92,13 +138,22 @@
                   :class="capSelected.has(sq.id) ? 'bg-green-900/40 ring-1 ring-green-500' : 'bg-gray-900 hover:bg-gray-800'"
                   @click="toggleCAPSquadron(sq.id)"
                 >
-                  <div class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
-                    :class="capSelected.has(sq.id) ? 'bg-green-500 border-green-500' : 'border-gray-600'">
-                    <span v-if="capSelected.has(sq.id)" class="text-white text-xs leading-none">✓</span>
+                  <div
+                    class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
+                    :class="capSelected.has(sq.id) ? 'bg-green-500 border-green-500' : 'border-gray-600'"
+                  >
+                    <span
+                      v-if="capSelected.has(sq.id)"
+                      class="text-white text-xs leading-none"
+                    >✓</span>
                   </div>
                   <div class="flex-1 min-w-0">
-                    <p class="text-white font-medium truncate">{{ sq.name }}</p>
-                    <p class="text-gray-500 text-xs">{{ sq.aircraftCount }} ac · {{ sq.pilotExperience }} · {{ aircraftTypeName(sq.aircraftTypeId) }}</p>
+                    <p class="text-white font-medium truncate">
+                      {{ sq.name }}
+                    </p>
+                    <p class="text-gray-500 text-xs">
+                      {{ sq.aircraftCount }} ac · {{ sq.pilotExperience }} · {{ aircraftTypeName(sq.aircraftTypeId) }}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -116,106 +171,137 @@
           <!-- Launch Strike tab -->
           <template #strike>
             <div data-testid="air-ops-tab-strike-content">
-            <div class="mt-3 space-y-4">
-
-              <!-- Squadron selection -->
-              <div>
-                <div class="flex items-center justify-between mb-2">
-                  <p class="text-xs text-gray-400 uppercase tracking-wide">Select Squadrons</p>
-                  <UButton
-                    v-if="availableForStrike.length > 0"
-                    :label="allSelected ? 'Deselect All' : 'Select All'"
-                    size="xs"
-                    color="neutral"
-                    variant="ghost"
-                    @click="toggleSelectAll"
-                  />
-                </div>
-                <div v-if="!availableForStrike.length" class="text-sm text-gray-500 text-center py-2">
-                  No squadrons available (must be hangared or spotted).
-                </div>
-                <div
-                  v-for="sq in availableForStrike"
-                  :key="sq.id"
-                  data-testid="strike-squadron-row"
-                  class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
-                  :class="strikeSelected.has(sq.id) ? 'bg-blue-900/40 ring-1 ring-blue-500' : 'bg-gray-900 hover:bg-gray-800'"
-                  @click="toggleStrikeSquadron(sq.id)"
-                >
-                  <div class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
-                    :class="strikeSelected.has(sq.id) ? 'bg-blue-500 border-blue-500' : 'border-gray-600'">
-                    <span v-if="strikeSelected.has(sq.id)" class="text-white text-xs leading-none">✓</span>
+              <div class="mt-3 space-y-4">
+                <!-- Squadron selection -->
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <p class="text-xs text-gray-400 uppercase tracking-wide">
+                      Select Squadrons
+                    </p>
+                    <UButton
+                      v-if="availableForStrike.length > 0"
+                      :label="allSelected ? 'Deselect All' : 'Select All'"
+                      size="xs"
+                      color="neutral"
+                      variant="ghost"
+                      @click="toggleSelectAll"
+                    />
                   </div>
-                  <div class="flex-1 min-w-0">
-                    <p class="text-white font-medium truncate">{{ sq.name }}</p>
-                    <p class="text-gray-500 text-xs">{{ sq.aircraftCount }} ac · {{ sq.pilotExperience }} · {{ aircraftTypeName(sq.aircraftTypeId) }}</p>
-                  </div>
-                  <UBadge :color="deckStatusColor(sq.deckStatus)" variant="subtle" size="sm">
-                    {{ sq.deckStatus }}
-                  </UBadge>
-                </div>
-              </div>
-
-              <!-- Target picker -->
-              <div>
-                <p class="text-xs text-gray-400 mb-2 uppercase tracking-wide">Target</p>
-                <div v-if="contactOptions.length">
-                  <select
-                    v-model="strikeTargetContactId"
-                    data-testid="strike-target-select"
-                    class="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <div
+                    v-if="!availableForStrike.length"
+                    class="text-sm text-gray-500 text-center py-2"
                   >
-                    <option value="">— Select contact —</option>
-                    <option v-for="opt in contactOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                  </select>
+                    No squadrons available (must be hangared or spotted).
+                  </div>
+                  <div
+                    v-for="sq in availableForStrike"
+                    :key="sq.id"
+                    data-testid="strike-squadron-row"
+                    class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
+                    :class="strikeSelected.has(sq.id) ? 'bg-blue-900/40 ring-1 ring-blue-500' : 'bg-gray-900 hover:bg-gray-800'"
+                    @click="toggleStrikeSquadron(sq.id)"
+                  >
+                    <div
+                      class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
+                      :class="strikeSelected.has(sq.id) ? 'bg-blue-500 border-blue-500' : 'border-gray-600'"
+                    >
+                      <span
+                        v-if="strikeSelected.has(sq.id)"
+                        class="text-white text-xs leading-none"
+                      >✓</span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-white font-medium truncate">
+                        {{ sq.name }}
+                      </p>
+                      <p class="text-gray-500 text-xs">
+                        {{ sq.aircraftCount }} ac · {{ sq.pilotExperience }} · {{ aircraftTypeName(sq.aircraftTypeId) }}
+                      </p>
+                    </div>
+                    <UBadge
+                      :color="deckStatusColor(sq.deckStatus)"
+                      variant="subtle"
+                      size="sm"
+                    >
+                      {{ sq.deckStatus }}
+                    </UBadge>
+                  </div>
                 </div>
-                <div class="flex gap-2 mt-2 items-center">
-                  <span class="text-xs text-gray-500 flex-shrink-0">Manual hex:</span>
-                  <input
-                    v-model.number="manualQ"
-                    type="number"
-                    placeholder="Q"
-                    class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <input
-                    v-model.number="manualR"
-                    type="number"
-                    placeholder="R"
-                    class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+
+                <!-- Target picker -->
+                <div>
+                  <p class="text-xs text-gray-400 mb-2 uppercase tracking-wide">
+                    Target
+                  </p>
+                  <div v-if="contactOptions.length">
+                    <select
+                      v-model="strikeTargetContactId"
+                      data-testid="strike-target-select"
+                      class="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">
+                        — Select contact —
+                      </option>
+                      <option
+                        v-for="opt in contactOptions"
+                        :key="opt.value"
+                        :value="opt.value"
+                      >
+                        {{ opt.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="flex gap-2 mt-2 items-center">
+                    <span class="text-xs text-gray-500 flex-shrink-0">Manual hex:</span>
+                    <input
+                      v-model.number="manualQ"
+                      type="number"
+                      placeholder="Q"
+                      class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                    <input
+                      v-model.number="manualR"
+                      type="number"
+                      placeholder="R"
+                      class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                  </div>
                 </div>
-              </div>
 
-              <!-- Range warning -->
-              <div
-                v-if="rangeWarning"
-                class="flex gap-2 items-start px-3 py-2 rounded-lg bg-yellow-900/30 border border-yellow-700/50 text-sm text-yellow-300"
-              >
-                <span class="flex-shrink-0">⚠</span>
-                <span>{{ rangeWarning }}</span>
-              </div>
+                <!-- Range warning -->
+                <div
+                  v-if="rangeWarning"
+                  class="flex gap-2 items-start px-3 py-2 rounded-lg bg-yellow-900/30 border border-yellow-700/50 text-sm text-yellow-300"
+                >
+                  <span class="flex-shrink-0">⚠</span>
+                  <span>{{ rangeWarning }}</span>
+                </div>
 
-              <!-- Launch button -->
-              <UButton
-                data-testid="launch-strike-btn"
-                label="Launch Strike"
-                color="error"
-                block
-                :disabled="!canLaunchStrike"
-                @click="launchStrike"
-              />
-            </div>
+                <!-- Launch button -->
+                <UButton
+                  data-testid="launch-strike-btn"
+                  label="Launch Strike"
+                  color="error"
+                  block
+                  :disabled="!canLaunchStrike"
+                  @click="launchStrike"
+                />
+              </div>
             </div>
           </template>
 
           <!-- Scout tab -->
           <template #scout>
             <div class="mt-3 space-y-4">
-
               <!-- Squadron selection -->
               <div>
-                <p class="text-xs text-gray-400 uppercase tracking-wide mb-2">Select Scout</p>
-                <div v-if="!availableForScout.length" class="text-sm text-gray-500 text-center py-2">
+                <p class="text-xs text-gray-400 uppercase tracking-wide mb-2">
+                  Select Scout
+                </p>
+                <div
+                  v-if="!availableForScout.length"
+                  class="text-sm text-gray-500 text-center py-2"
+                >
                   No scout/patrol aircraft available.
                 </div>
                 <div
@@ -225,27 +311,46 @@
                   :class="scoutSelected.has(sq.id) ? 'bg-teal-900/40 ring-1 ring-teal-500' : 'bg-gray-900 hover:bg-gray-800'"
                   @click="toggleScoutSquadron(sq.id)"
                 >
-                  <div class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
-                    :class="scoutSelected.has(sq.id) ? 'bg-teal-500 border-teal-500' : 'border-gray-600'">
-                    <span v-if="scoutSelected.has(sq.id)" class="text-white text-xs leading-none">✓</span>
+                  <div
+                    class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
+                    :class="scoutSelected.has(sq.id) ? 'bg-teal-500 border-teal-500' : 'border-gray-600'"
+                  >
+                    <span
+                      v-if="scoutSelected.has(sq.id)"
+                      class="text-white text-xs leading-none"
+                    >✓</span>
                   </div>
                   <div class="flex-1 min-w-0">
-                    <p class="text-white font-medium truncate">{{ sq.name }}</p>
-                    <p class="text-gray-500 text-xs">{{ sq.aircraftCount }} ac · {{ aircraftTypeName(sq.aircraftTypeId) }}</p>
+                    <p class="text-white font-medium truncate">
+                      {{ sq.name }}
+                    </p>
+                    <p class="text-gray-500 text-xs">
+                      {{ sq.aircraftCount }} ac · {{ aircraftTypeName(sq.aircraftTypeId) }}
+                    </p>
                   </div>
                 </div>
               </div>
 
               <!-- Target hex -->
               <div>
-                <p class="text-xs text-gray-400 mb-2 uppercase tracking-wide">Target Area</p>
+                <p class="text-xs text-gray-400 mb-2 uppercase tracking-wide">
+                  Target Area
+                </p>
                 <div v-if="contactOptions.length">
                   <select
                     v-model="scoutTargetContactId"
                     class="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-teal-500 mb-2"
                   >
-                    <option value="">— Fly to known contact —</option>
-                    <option v-for="opt in contactOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                    <option value="">
+                      — Fly to known contact —
+                    </option>
+                    <option
+                      v-for="opt in contactOptions"
+                      :key="opt.value"
+                      :value="opt.value"
+                    >
+                      {{ opt.label }}
+                    </option>
                   </select>
                 </div>
                 <div class="flex gap-2 items-center">
@@ -255,13 +360,13 @@
                     type="number"
                     placeholder="Q"
                     class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  />
+                  >
                   <input
                     v-model.number="scoutManualR"
                     type="number"
                     placeholder="R"
                     class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  />
+                  >
                 </div>
               </div>
 
@@ -274,7 +379,6 @@
               />
             </div>
           </template>
-
         </UTabs>
       </div>
     </template>
@@ -299,11 +403,11 @@ const intelStore = useIntelligenceStore()
 useModalPause(open)
 
 const tabs = [
-  { label: 'Deck Status', slot: 'deck'    as const, value: 'deck' },
-  { label: 'Airborne',    slot: 'airborne' as const, value: 'airborne' },
-  { label: 'CAP',         slot: 'cap'     as const, value: 'cap' },
-  { label: 'Strike',      slot: 'strike'  as const, value: 'strike' },
-  { label: 'Scout',       slot: 'scout'   as const, value: 'scout' },
+  { label: 'Deck Status', slot: 'deck' as const, value: 'deck' },
+  { label: 'Airborne', slot: 'airborne' as const, value: 'airborne' },
+  { label: 'CAP', slot: 'cap' as const, value: 'cap' },
+  { label: 'Strike', slot: 'strike' as const, value: 'strike' },
+  { label: 'Scout', slot: 'scout' as const, value: 'scout' }
 ]
 
 // ── Active tab ────────────────────────────────────────────────────────────
@@ -359,22 +463,22 @@ const activeCAPSquadrons = computed(() => {
 
 function deckStatusColor(status: DeckStatus): 'success' | 'warning' | 'error' | 'neutral' | 'info' {
   switch (status) {
-    case 'spotted':    return 'success'
-    case 'airborne':   return 'info'
+    case 'spotted': return 'success'
+    case 'airborne': return 'info'
     case 'recovering': return 'warning'
-    case 'rearming':   return 'warning'
-    case 'hangared':   return 'neutral'
-    default:           return 'neutral'
+    case 'rearming': return 'warning'
+    case 'hangared': return 'neutral'
+    default: return 'neutral'
   }
 }
 
 function missionStatusColor(status: string): 'success' | 'warning' | 'error' | 'info' | 'neutral' {
   switch (status) {
-    case 'airborne':   return 'info'
-    case 'returning':  return 'warning'
-    case 'recovered':  return 'success'
-    case 'lost':       return 'error'
-    default:           return 'neutral'
+    case 'airborne': return 'info'
+    case 'returning': return 'warning'
+    case 'recovered': return 'success'
+    case 'lost': return 'error'
+    default: return 'neutral'
   }
 }
 
@@ -389,7 +493,7 @@ function aircraftTypeName(typeId: number): string {
 const contactOptions = computed(() =>
   intelStore.activeAlliedContacts.map(c => ({
     label: `${c.contactType} @ (${c.lastKnownHex.q}, ${c.lastKnownHex.r})`,
-    value: c.id,
+    value: c.id
   }))
 )
 
@@ -398,7 +502,7 @@ const contactOptions = computed(() =>
 const capSelected = ref<Set<string>>(new Set())
 
 const availableForCAP = computed(() =>
-  squadrons.value.filter(sq => {
+  squadrons.value.filter((sq) => {
     if (sq.deckStatus !== 'hangared' || sq.aircraftCount === 0) return false
     if (sq.currentMissionId) return false
     const ac = AIRCRAFT_TYPES.find(t => t.id === sq.aircraftTypeId)
@@ -432,12 +536,12 @@ const manualR = ref<number | null>(null)
 
 const availableForStrike = computed(() =>
   squadrons.value.filter(sq =>
-    (sq.deckStatus === 'hangared' || sq.deckStatus === 'spotted') &&
-    !sq.currentMissionId
+    (sq.deckStatus === 'hangared' || sq.deckStatus === 'spotted')
+    && !sq.currentMissionId
   )
 )
 
-const strikeTargetHex = computed((): { q: number; r: number } | null => {
+const strikeTargetHex = computed((): { q: number, r: number } | null => {
   if (strikeTargetContactId.value) {
     const contact = intelStore.activeAlliedContacts.find(c => c.id === strikeTargetContactId.value)
     if (contact) return contact.lastKnownHex
@@ -455,7 +559,7 @@ const rangeWarning = computed((): string | null => {
   const dist = hexDistance(tg.position, strikeTargetHex.value)
   const distNM = dist * 20
 
-  const outOfRange = [...strikeSelected.value].filter(id => {
+  const outOfRange = [...strikeSelected.value].filter((id) => {
     const sq = forcesStore.squadrons.get(id)
     if (!sq) return false
     const ac = AIRCRAFT_TYPES.find(t => t.id === sq.aircraftTypeId)
@@ -480,8 +584,8 @@ function toggleStrikeSquadron(id: string): void {
 }
 
 const allSelected = computed(() =>
-  availableForStrike.value.length > 0 &&
-  availableForStrike.value.every(sq => strikeSelected.value.has(sq.id))
+  availableForStrike.value.length > 0
+  && availableForStrike.value.every(sq => strikeSelected.value.has(sq.id))
 )
 
 function toggleSelectAll(): void {
@@ -498,7 +602,7 @@ function launchStrike(): void {
     type: 'launch-strike',
     taskGroupId: props.taskGroupId,
     squadronIds: [...strikeSelected.value],
-    targetHex: strikeTargetHex.value,
+    targetHex: strikeTargetHex.value
   })
   open.value = false
 }
@@ -511,7 +615,7 @@ const scoutManualQ = ref<number | null>(null)
 const scoutManualR = ref<number | null>(null)
 
 const availableForScout = computed(() =>
-  squadrons.value.filter(sq => {
+  squadrons.value.filter((sq) => {
     if (sq.deckStatus !== 'hangared' || sq.aircraftCount === 0) return false
     if (sq.currentMissionId) return false
     const ac = AIRCRAFT_TYPES.find(t => t.id === sq.aircraftTypeId)
@@ -526,7 +630,7 @@ function toggleScoutSquadron(id: string): void {
   scoutSelected.value = s
 }
 
-const scoutTargetHex = computed((): { q: number; r: number } | null => {
+const scoutTargetHex = computed((): { q: number, r: number } | null => {
   if (scoutTargetContactId.value) {
     const contact = intelStore.activeAlliedContacts.find(c => c.id === scoutTargetContactId.value)
     if (contact) return contact.lastKnownHex

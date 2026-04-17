@@ -16,11 +16,11 @@ import type { GameSnapshot } from '@game/engine/GameEngine'
 function shipStatusColor(status: ShipStatus): 'success' | 'warning' | 'error' | 'neutral' {
   switch (status) {
     case 'operational': return 'success'
-    case 'damaged':     return 'warning'
-    case 'on-fire':     return 'error'
-    case 'sinking':     return 'error'
-    case 'sunk':        return 'neutral'
-    default:            return 'neutral'
+    case 'damaged': return 'warning'
+    case 'on-fire': return 'error'
+    case 'sinking': return 'error'
+    case 'sunk': return 'neutral'
+    default: return 'neutral'
   }
 }
 

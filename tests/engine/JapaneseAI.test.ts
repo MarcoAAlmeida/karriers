@@ -47,7 +47,7 @@ function makeTG(overrides: Partial<TaskGroup> = {}): TaskGroup {
 function makeValSquadron(overrides: Partial<Squadron> = {}): Squadron {
   return {
     id: 'akagi-db',
-    aircraftTypeId: 35,        // D3A Val
+    aircraftTypeId: 35, // D3A Val
     name: 'Akagi Vals',
     side: 'japanese',
     taskGroupId: 'kido-butai',
@@ -65,7 +65,7 @@ function makeValSquadron(overrides: Partial<Squadron> = {}): Squadron {
 function makeKateSquadron(overrides: Partial<Squadron> = {}): Squadron {
   return {
     id: 'akagi-tb',
-    aircraftTypeId: 40,        // B5N Kate
+    aircraftTypeId: 40, // B5N Kate
     name: 'Akagi Kates',
     side: 'japanese',
     taskGroupId: 'kido-butai',
@@ -83,7 +83,7 @@ function makeContact(overrides: Partial<ContactRecord> = {}): ContactRecord {
   return {
     id: 'c-1',
     forSide: 'japanese',
-    lastKnownHex: { q: 43, r: 49 },  // ~16 hexes from KB = 320 NM (within Val range)
+    lastKnownHex: { q: 43, r: 49 }, // ~16 hexes from KB = 320 NM (within Val range)
     lastSeenAt: TIME,
     contactType: 'carrier-force',
     isActive: true,
@@ -163,7 +163,7 @@ describe('JapaneseAI', () => {
   // ── Strike launch ────────────────────────────────────────────────────────
 
   it('launches strike when contact is in range and attack squadrons are ready', () => {
-    const tg = makeTG()   // at q=27,r=51; contact at q=43,r=49 (~320 NM)
+    const tg = makeTG() // at q=27,r=51; contact at q=43,r=49 (~320 NM)
     const val = makeValSquadron()
     const kate = makeKateSquadron()
     const contact = makeContact()
@@ -183,6 +183,7 @@ describe('JapaneseAI', () => {
       targetHex: { q: 43, r: 49 }
     })
     // Both Vals and Kates should be included
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const squadronIds = (launch as any).squadronIds as string[]
     expect(squadronIds).toContain('akagi-db')
     expect(squadronIds).toContain('akagi-tb')
@@ -195,12 +196,12 @@ describe('JapaneseAI', () => {
     // Two contacts: surface-force nearby, carrier-force farther
     const surfaceContact = makeContact({
       id: 'c-surface',
-      lastKnownHex: { q: 30, r: 51 },  // very close, 3 hexes
+      lastKnownHex: { q: 30, r: 51 }, // very close, 3 hexes
       contactType: 'surface-force'
     })
     const carrierContact = makeContact({
       id: 'c-carrier',
-      lastKnownHex: { q: 43, r: 49 },  // 16 hexes, but carrier-force
+      lastKnownHex: { q: 43, r: 49 }, // 16 hexes, but carrier-force
       contactType: 'carrier-force'
     })
 
@@ -216,11 +217,12 @@ describe('JapaneseAI', () => {
     const orders = collectOrders(snap)
     const launch = orders.find(o => o.type === 'launch-strike')
     expect(launch).toBeDefined()
-    expect((launch as any).targetHex).toMatchObject({ q: 43, r: 49 })  // carrier target
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((launch as any).targetHex).toMatchObject({ q: 43, r: 49 }) // carrier target
   })
 
   it('does not launch when contact is out of range', () => {
-    const tg = makeTG({ position: { q: 5, r: 5 } })   // far from contact
+    const tg = makeTG({ position: { q: 5, r: 5 } }) // far from contact
     const val = makeValSquadron()
     // Val strike range ≈ 357 NM = ~17 hexes; contact at 40 hexes away
     const farContact = makeContact({ lastKnownHex: { q: 45, r: 5 } })
@@ -268,7 +270,9 @@ describe('JapaneseAI', () => {
     const launch = orders.find(o => o.type === 'launch-strike')
     expect(launch).toBeDefined()
     // Only Kate should be in the launch (Val has 0 aircraft)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((launch as any).squadronIds).not.toContain('akagi-db')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((launch as any).squadronIds).toContain('akagi-tb')
   })
 

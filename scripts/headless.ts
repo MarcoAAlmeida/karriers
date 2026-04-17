@@ -45,9 +45,9 @@ function parseArgs(): Partial<ScenarioParams> {
 
 function run(): void {
   const params: Partial<ScenarioParams> = {
-    seed: 42,          // reproducible by default; override with --seed
+    seed: 42, // reproducible by default; override with --seed
     spawnMode: 'fixed',
-    ...parseArgs(),
+    ...parseArgs()
   }
 
   const startWall = Date.now()
@@ -62,7 +62,7 @@ function run(): void {
     winner: string
     alliedPoints: number
     japanesePoints: number
-    simTime: { day: number; hour: number; minute: number }
+    simTime: { day: number, hour: number, minute: number }
   } | null = null
 
   engine.events.on('ScenarioEnded', (evt) => {
@@ -71,7 +71,7 @@ function run(): void {
       winner: evt.winner,
       alliedPoints: evt.alliedPoints,
       japanesePoints: evt.japanesePoints,
-      simTime: evt.time,
+      simTime: evt.time
     }
   })
 
@@ -82,7 +82,7 @@ function run(): void {
   // We pass just over that to guarantee exactly one step per call.
   const ONE_STEP_MS = 30 * 130 + 1
 
-  const SAFETY_LIMIT = 20_000  // ~417 simulated days — should never reach this
+  const SAFETY_LIMIT = 20_000 // ~417 simulated days — should never reach this
 
   while (!ended && stepCount < SAFETY_LIMIT) {
     engine.tick(ONE_STEP_MS)
@@ -90,7 +90,7 @@ function run(): void {
 
     if (!ended) {
       const snap = engine.getSnapshot()
-      ai.step(snap, (order) => engine.issueOrder(order))
+      ai.step(snap, order => engine.issueOrder(order))
     }
   }
 

@@ -259,7 +259,7 @@ function cycleTaskGroup(dir: 1 | -1) {
   const currentId = mapStore.selectedTaskGroupId
   const idx = groups.findIndex(tg => tg.id === currentId)
   const nextIdx = ((idx === -1 ? 0 : idx) + dir + groups.length) % groups.length
-  mapStore.selectTaskGroup(groups[nextIdx].id)
+  mapStore.selectTaskGroup(groups[nextIdx]!.id)
 }
 </script>
 

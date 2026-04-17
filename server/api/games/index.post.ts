@@ -1,5 +1,3 @@
-import { randomUUID } from 'uncrypto'
-
 interface StepPayload {
   stepNumber: number
   alliedSnapshotJson: string
@@ -21,7 +19,7 @@ interface LogGameBody {
 export default eventHandler(async (event) => {
   const body = await readBody<LogGameBody>(event)
 
-  const gameId = randomUUID()
+  const gameId = crypto.randomUUID()
   const db = useDrizzle()
 
   await db.insert(tables.games).values({
@@ -34,7 +32,7 @@ export default eventHandler(async (event) => {
     durationSteps: body.durationSteps,
     alliedPoints: body.alliedPoints ?? 0,
     japanesePoints: body.japanesePoints ?? 0,
-    createdAt: Date.now(),
+    createdAt: Date.now()
   })
 
   if (body.steps?.length) {
@@ -43,7 +41,7 @@ export default eventHandler(async (event) => {
         gameId,
         stepNumber: s.stepNumber,
         alliedSnapshotJson: s.alliedSnapshotJson,
-        japaneseSnapshotJson: s.japaneseSnapshotJson,
+        japaneseSnapshotJson: s.japaneseSnapshotJson
       }))
     )
   }

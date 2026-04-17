@@ -10,8 +10,7 @@
  * No Vue or Nuxt imports. Safe to call from headless scripts and unit tests.
  */
 
-import type { Scenario } from '../types/scenario'
-import type { ScenarioParams } from '../types/scenario'
+import type { Scenario, ScenarioParams } from '../types/scenario'
 import { DEFAULT_SCENARIO_PARAMS } from '../types/scenario'
 import type { MutableGameState } from '../engine/GameEngine'
 import type { HexCoord, HexCell } from '../types/map'
@@ -77,7 +76,7 @@ export function buildStateFromScenario(
     pendingGameEvents: [],
     // Fallback to Infinity (unlimited) when scenario doesn't define pools.
     alliedFuelPool: scenario.alliedFuelPool ?? Infinity,
-    japaneseFuelPool: scenario.japaneseFuelPool ?? Infinity,
+    japaneseFuelPool: scenario.japaneseFuelPool ?? Infinity
   }
 }
 
@@ -89,7 +88,7 @@ export function buildStateFromScenario(
  */
 function applySpawnOffsets(
   taskGroups: Map<string, import('../types').TaskGroup>,
-  bounds: { minQ: number; maxQ: number; minR: number; maxR: number },
+  bounds: { minQ: number, maxQ: number, minR: number, maxR: number },
   seed: number
 ): void {
   const rng = createRng(seed)
@@ -101,20 +100,20 @@ function applySpawnOffsets(
 
     tg.position = {
       q: Math.max(bounds.minQ, Math.min(bounds.maxQ, tg.position.q + dq)),
-      r: Math.max(bounds.minR, Math.min(bounds.maxR, tg.position.r + dr)),
+      r: Math.max(bounds.minR, Math.min(bounds.maxR, tg.position.r + dr))
     }
 
     // Sync destination offsets if present
     if (tg.destination) {
       tg.destination = {
         q: Math.max(bounds.minQ, Math.min(bounds.maxQ, tg.destination.q + dq)),
-        r: Math.max(bounds.minR, Math.min(bounds.maxR, tg.destination.r + dr)),
+        r: Math.max(bounds.minR, Math.min(bounds.maxR, tg.destination.r + dr))
       }
     }
     if (tg.strikeTargetHex) {
       tg.strikeTargetHex = {
         q: Math.max(bounds.minQ, Math.min(bounds.maxQ, tg.strikeTargetHex.q + dq)),
-        r: Math.max(bounds.minR, Math.min(bounds.maxR, tg.strikeTargetHex.r + dr)),
+        r: Math.max(bounds.minR, Math.min(bounds.maxR, tg.strikeTargetHex.r + dr))
       }
     }
   }

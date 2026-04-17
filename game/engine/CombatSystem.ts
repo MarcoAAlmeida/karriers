@@ -139,18 +139,18 @@ export class CombatSystem {
     // 1. CAP intercept
     const capSquadrons = this.airOpsSystem.getCAPSquadrons(targetTG.id, squadrons, flightPlans)
     let airCombat: AirCombatResult | undefined
-    let survivingAttackers = attackerSquadrons.flatMap(sq => {
+    let survivingAttackers = attackerSquadrons.flatMap((sq) => {
       const aircraft = this.aircraftTypes.get(sq.aircraftTypeId)
       return Array(sq.aircraftCount).fill({ sq, aircraft })
     })
 
     if (capSquadrons.length > 0) {
       airCombat = this.resolveAirCombat(attackerSquadrons, capSquadrons, targetTG.id)
-      const attackerLossPct = airCombat.attackerLosses / Math.max(survivingAttackers.length, 1)
+      const _attackerLossPct = airCombat.attackerLosses / Math.max(survivingAttackers.length, 1)
       totalAircraftLost += airCombat.attackerLosses
       narrative.push(
-        `CAP intercept: ${airCombat.defenderLosses} fighters lost, ` +
-        `${airCombat.attackerLosses} attackers shot down`
+        `CAP intercept: ${airCombat.defenderLosses} fighters lost, `
+        + `${airCombat.attackerLosses} attackers shot down`
       )
       if (!airCombat.attackerPenetrated) {
         narrative.push('Strike turned back by CAP.')
@@ -298,7 +298,7 @@ export class CombatSystem {
       return bIsCarrier - aIsCarrier
     })
 
-    let attackersLeft = survivingCount
+    const attackersLeft = survivingCount
     let shipIndex = 0
 
     for (const sq of attackerSquadrons) {
@@ -336,7 +336,7 @@ export class CombatSystem {
     if (hits === 0) return null
 
     const sc = this.shipClasses.get(target.classId)
-    const armorFactor = sc ? (1 - sc.armorRating / 200) : 0.8  // armor reduces damage
+    const armorFactor = sc ? (1 - sc.armorRating / 200) : 0.8 // armor reduces damage
 
     // Damage per hit by weapon type
     let damagePerHit: number

@@ -51,7 +51,7 @@ describe('SidedSnapshot', () => {
     )
 
     // Confirmed contacts in the observation
-    const confirmedContactTGIds = new Set(
+    const _confirmedContactTGIds = new Set(
       [...obs.enemyContacts.values()]
         .filter(c => c.isActive && c.confirmedTaskGroupId)
         .map(c => c.confirmedTaskGroupId!)

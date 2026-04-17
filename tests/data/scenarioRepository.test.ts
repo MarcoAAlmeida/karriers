@@ -129,7 +129,7 @@ describe('scenarioFromDefinition', () => {
     const tf16 = def.forces[0].taskGroups[0]
     const vf6Def = tf16.squadrons.find(s => s.id === 'vf-6')!
     vf6Def.aircraftCount = 15
-    vf6Def.maxAircraftCount = 27   // cap stays at full complement
+    vf6Def.maxAircraftCount = 27 // cap stays at full complement
 
     const scenario = scenarioFromDefinition(def)
     const vf6 = scenario.forces.flatMap(f => f.squadrons).find(s => s.id === 'vf-6')!

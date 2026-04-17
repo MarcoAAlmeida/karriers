@@ -130,7 +130,7 @@ function makeCAPSquadron(id: string, tgId: string): Squadron {
   }
 }
 
-function makeStrikeFlightPlan(targetHex: { q: number; r: number }): FlightPlan {
+function makeStrikeFlightPlan(targetHex: { q: number, r: number }): FlightPlan {
   return {
     id: 'fp1',
     squadronIds: ['sq-strike'],
@@ -144,7 +144,7 @@ function makeStrikeFlightPlan(targetHex: { q: number; r: number }): FlightPlan {
   }
 }
 
-function makeCAPFlightPlan(tgId: string): FlightPlan {
+function makeCAPFlightPlan(_tgId: string): FlightPlan {
   return {
     id: 'fp-cap',
     squadronIds: ['sq-cap'],

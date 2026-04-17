@@ -28,20 +28,20 @@ const COL = {
   labelJapanese: 0xffaa88,
   labelContact: 0xffdd88,
   midwayLabel: 0x88cc66,
-  rangeSearch: 0x4499ff,    // blue search ring (IJN: red tinted via side check)
-  rangeStrike: 0xffcc33,    // amber strike ring
+  rangeSearch: 0x4499ff, // blue search ring (IJN: red tinted via side check)
+  rangeStrike: 0xffcc33 // amber strike ring
 }
 
 // ── Known atoll/island hex positions ──────────────────────────────────────
 
-const ATOLL_HEXES: Array<{ q: number; r: number }> = [
-  { q: 35, r: 55 }  // Midway Atoll
+const ATOLL_HEXES: Array<{ q: number, r: number }> = [
+  { q: 35, r: 55 } // Midway Atoll
 ]
 
 // ── usePixiRenderer ────────────────────────────────────────────────────────
 
 export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
-  useHexMap()   // ensure grid is initialised
+  useHexMap() // ensure grid is initialised
 
   // Stores
   const forcesStore = useForcesStore()
@@ -51,7 +51,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
   // PixiJS internals
   let app: Application | null = null
-  let world: Container          // panned/zoomed container
+  let world: Container // panned/zoomed container
   let terrainLayer: Graphics
   let gridLayer: Graphics
   let rangeRingLayer: Graphics
@@ -72,8 +72,8 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
   const strikeDotTokens = new Map<string, Container>()
 
   // Smooth interpolation: pixel positions before and after last step
-  const prevPos = new Map<string, { x: number; y: number }>()
-  const currPos = new Map<string, { x: number; y: number }>()
+  const prevPos = new Map<string, { x: number, y: number }>()
+  const currPos = new Map<string, { x: number, y: number }>()
 
   // Pan/zoom state (local — not reactive, manipulated inside PixiJS)
   let vpX = 0
@@ -100,7 +100,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       background: COL.ocean,
       antialias: true,
       autoDensity: true,
-      resolution: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+      resolution: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
     })
 
     el.appendChild(app.canvas as HTMLCanvasElement)
@@ -109,17 +109,17 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     world = new Container()
     app.stage.addChild(world)
 
-    terrainLayer    = new Graphics()
-    gridLayer       = new Graphics()
-    rangeRingLayer  = new Graphics()
-    fogLayer        = new Container()
-    contactLayer    = new Container()
+    terrainLayer = new Graphics()
+    gridLayer = new Graphics()
+    rangeRingLayer = new Graphics()
+    fogLayer = new Container()
+    contactLayer = new Container()
     sunkMarkerLayer = new Container()
-    unitLayer       = new Container()
+    unitLayer = new Container()
     flightPathLayer = new Graphics()
-    strikeDotLayer  = new Container()
-    capLayer        = new Graphics()
-    selectionLayer  = new Graphics()
+    strikeDotLayer = new Container()
+    capLayer = new Graphics()
+    selectionLayer = new Graphics()
     annotationLayer = new Container()
 
     world.addChild(terrainLayer, gridLayer, rangeRingLayer, fogLayer, contactLayer, sunkMarkerLayer, unitLayer, flightPathLayer, strikeDotLayer, capLayer, selectionLayer, annotationLayer)
@@ -212,7 +212,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       // Bold ✕ centred on the diamond, large enough to read at default zoom
       const lbl = new Text({
         text: '✕',
-        style: { fill: 0xff8888, fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold' },
+        style: { fill: 0xff8888, fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold' }
       })
       lbl.anchor.set(0.5, 0.5)
       token.addChild(lbl)
@@ -312,14 +312,14 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
   function buildUnitToken(tg: TaskGroup, contactPos?: HexCoord): Container {
     const isAllied = tg.side === 'allied'
-    const isContact = contactPos !== undefined   // only called with contactPos for confirmed enemy contact tokens
+    const isContact = contactPos !== undefined // only called with contactPos for confirmed enemy contact tokens
 
     const token = new Container()
     token.label = tg.id
 
-    const fillColor   = isAllied ? COL.allied    : COL.japanese
+    const fillColor = isAllied ? COL.allied : COL.japanese
     const borderColor = isAllied ? COL.alliedBorder : COL.japaneseBorder
-    const labelColor  = isAllied ? COL.labelAllied  : COL.labelJapanese
+    const labelColor = isAllied ? COL.labelAllied : COL.labelJapanese
 
     // Square token — half-size S gives a 2S × 2S square matching ~radius-13 circle area
     const S = 11
@@ -331,7 +331,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
     // Carrier indicator — small white diamond inside the square
     const ships = forcesStore.shipsInGroup(tg.id)
-    const hasCarrier = ships.some(s => {
+    const hasCarrier = ships.some((s) => {
       const sc = gameStore.engine?.['state']?.shipClasses?.get(s.classId)
       return sc?.type?.includes('carrier')
     })
@@ -394,7 +394,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
 
     for (const tg of tgs.values()) {
       const isAllied = tg.side === 'allied'
-      let px: { x: number; y: number }
+      let px: { x: number, y: number }
 
       if (!isAllied) {
         // Only draw for confirmed contacts (visible to player)
@@ -405,7 +405,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
         px = hexToPixel(tg.position)
       }
 
-      const searchColor = isAllied ? COL.allied    : COL.japanese
+      const searchColor = isAllied ? COL.allied : COL.japanese
       const strikeColor = isAllied ? COL.rangeStrike : COL.rangeStrike
 
       const searchNm = getBestSearchRangeNm(tg.id)
@@ -528,14 +528,14 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
   /** Evaluate a quadratic bezier at parameter t (0–1). */
   function bezierPoint(
     t: number,
-    p0: { x: number; y: number },
-    cp: { x: number; y: number },
-    p1: { x: number; y: number }
-  ): { x: number; y: number } {
+    p0: { x: number, y: number },
+    cp: { x: number, y: number },
+    p1: { x: number, y: number }
+  ): { x: number, y: number } {
     const mt = 1 - t
     return {
       x: mt * mt * p0.x + 2 * mt * t * cp.x + t * t * p1.x,
-      y: mt * mt * p0.y + 2 * mt * t * cp.y + t * t * p1.y,
+      y: mt * mt * p0.y + 2 * mt * t * cp.y + t * t * p1.y
     }
   }
 
@@ -556,7 +556,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       const homeTG = forcesStore.taskGroups.get(sq.taskGroupId)
       if (!homeTG) continue
       const carrierPx = hexToPixel(homeTG.position)
-      const targetPx  = hexToPixel(plan.targetHex)
+      const targetPx = hexToPixel(plan.targetHex)
 
       if (isOutbound) {
         // Outbound: carrier (live) → target (live)
@@ -600,7 +600,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
    */
   function drawCAPRings(): void {
     capLayer.clear()
-    const t = Date.now() / 1000   // seconds
+    const t = Date.now() / 1000 // seconds
 
     for (const plan of forcesStore.flightPlans.values()) {
       if (plan.mission !== 'cap' || plan.status !== 'airborne') continue
@@ -652,7 +652,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       const screenY = container.y * vpZoom + vpY
 
       // Find all dot tokens close enough to count as overlapping
-      const OVERLAP_R = 15  // screen-space pixels
+      const OVERLAP_R = 15 // screen-space pixels
       const overlapping: string[] = []
       for (const [otherId, other] of strikeDotTokens) {
         const ox = other.x * vpZoom + vpX
@@ -697,18 +697,18 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       const homeTG = forcesStore.taskGroups.get(sq.taskGroupId)
       if (!homeTG) continue
       const carrierPx = hexToPixel(homeTG.position)
-      const targetPx  = hexToPixel(plan.targetHex)
+      const targetPx = hexToPixel(plan.targetHex)
 
-      let dotPos: { x: number; y: number } | null = null
+      let dotPos: { x: number, y: number } | null = null
 
       if ((plan.status === 'airborne' || plan.status === 'inbound') && plan.eta) {
         // Outbound: t = elapsed fraction of launch→eta window
         // Arc: carrier (live) → target (live)
         const launchMin = gameTimeToMinutes(plan.launchTime)
-        const etaMin    = gameTimeToMinutes(plan.eta)
+        const etaMin = gameTimeToMinutes(plan.eta)
         const total = etaMin - launchMin
         if (total > 0) {
-          const t  = Math.min(1, Math.max(0, (nowMin - launchMin) / total))
+          const t = Math.min(1, Math.max(0, (nowMin - launchMin) / total))
           const cp = { x: (carrierPx.x + targetPx.x) / 2, y: (carrierPx.y + targetPx.y) / 2 - 60 }
           dotPos = bezierPoint(t, carrierPx, cp, targetPx)
         } else {
@@ -717,11 +717,11 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
       } else if (plan.status === 'returning' && plan.eta && plan.returnEta) {
         // Return: t = elapsed fraction of eta→returnEta window
         // Arc: strike point (targetHex — snapped at resolution) → carrier (live)
-        const etaMin    = gameTimeToMinutes(plan.eta)
+        const etaMin = gameTimeToMinutes(plan.eta)
         const returnMin = gameTimeToMinutes(plan.returnEta)
         const total = returnMin - etaMin
         if (total > 0) {
-          const t  = Math.min(1, Math.max(0, (nowMin - etaMin) / total))
+          const t = Math.min(1, Math.max(0, (nowMin - etaMin) / total))
           const cp = { x: (targetPx.x + carrierPx.x) / 2, y: (targetPx.y + carrierPx.y) / 2 - 60 }
           dotPos = bezierPoint(t, targetPx, cp, carrierPx)
         } else {
@@ -908,7 +908,7 @@ export function usePixiRenderer(containerRef: Ref<HTMLElement | null>) {
     vpY = sh / 2 - center.y * vpZoom
   }
 
-  function computeGridBounds(): { width: number; height: number } {
+  function _computeGridBounds(): { width: number, height: number } {
     const bottomRight = hexToPixel({ q: GRID_WIDTH - 1, r: GRID_HEIGHT - 1 })
     return { width: bottomRight.x + 60, height: bottomRight.y + 60 }
   }

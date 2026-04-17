@@ -4,11 +4,11 @@ import { test, expect } from '@playwright/test'
 interface GameState {
   phase: string
   isPaused: boolean
-  currentTime: { day: number; hour: number; minute: number }
-  taskGroups: Array<{ id: string; name: string; side: string; position: { q: number; r: number } }>
-  ships: Array<{ id: string; name: string; side: string; status: string }>
-  squadrons: Array<{ id: string; name: string; side: string; aircraftCount: number }>
-  flightPlans: Array<{ id: string; mission: string; status: string }>
+  currentTime: { day: number, hour: number, minute: number }
+  taskGroups: Array<{ id: string, name: string, side: string, position: { q: number, r: number } }>
+  ships: Array<{ id: string, name: string, side: string, status: string }>
+  squadrons: Array<{ id: string, name: string, side: string, aircraftCount: number }>
+  flightPlans: Array<{ id: string, mission: string, status: string }>
   alliedContactCount: number
   sightingLogLength: number
   combatLogLength: number
@@ -32,6 +32,7 @@ test.describe('Scenario load — Battle of Midway', () => {
     // Wait for __GAME_STATE__ to be available and populated
     await page.waitForFunction(
       () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const s = (window as any).__GAME_STATE__
         return s && s.taskGroups && s.taskGroups.length > 0
       },

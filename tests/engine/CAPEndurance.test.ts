@@ -17,9 +17,9 @@ import { AIRCRAFT_TYPES } from '@game/data/aircraftTypes'
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
-const T0: GameTime    = { day: 1, hour: 6,  minute: 0 }
-const T_END: GameTime = { day: 3, hour: 6,  minute: 0 }
-const STEP_MS = 30 * 130  // one 30-min step at speed-1
+const T0: GameTime = { day: 1, hour: 6, minute: 0 }
+const T_END: GameTime = { day: 3, hour: 6, minute: 0 }
+const STEP_MS = 30 * 130 // one 30-min step at speed-1
 
 function makeCVClass(id: number): ShipClass {
   return {
@@ -34,7 +34,7 @@ function makeCVClass(id: number): ShipClass {
     hullPoints: 100,
     damageControlRating: 70,
     flightDeckCapacity: 36,
-    hangarCapacity: 72,
+    hangarCapacity: 72
   }
 }
 
@@ -47,14 +47,14 @@ function makeShip(
     status: 'operational',
     hullDamage: 0, fires: 0, floodingRisk: 0,
     fuelLevel: 100, ammoLevel: 100, damageControlEfficiency: 100,
-    ...extra,
+    ...extra
   }
 }
 
 function makeTG(
   id: string,
   side: 'allied' | 'japanese',
-  pos: { q: number; r: number },
+  pos: { q: number, r: number },
   shipIds: string[],
   speed = 0
 ): TaskGroup {
@@ -64,7 +64,7 @@ function makeTG(
     shipIds, position: pos,
     course: 90, speed,
     currentOrder: 'standby',
-    fuelState: 100,
+    fuelState: 100
   }
 }
 
@@ -80,7 +80,7 @@ function makeSquadron(
     pilotExperience: 'veteran',
     deckStatus: 'hangared',
     fuelLoad: 100, ordnanceLoaded: 'none',
-    ...extra,
+    ...extra
   }
 }
 
@@ -106,7 +106,6 @@ function steps(engine: GameEngine, n: number): void {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('Sprint 21 — CAP Endurance + Per-Mission Fuel Consumption', () => {
-
   // ── 1. CAP recalled after endurance window ────────────────────────────────
   it('CAP flight plan transitions away from airborne after 90-min orbit', () => {
     const state = buildBaseState()
@@ -174,7 +173,7 @@ describe('Sprint 21 — CAP Endurance + Per-Mission Fuel Consumption', () => {
     const ddClass: ShipClass = {
       id: 2, name: 'destroyer', type: 'destroyer', side: 'allied',
       displacement: 2000, maxSpeed: 36, aaStrength: 20, armorRating: 15,
-      hullPoints: 25, damageControlRating: 55,
+      hullPoints: 25, damageControlRating: 55
     }
     state.shipClasses.set(2, ddClass)
 
@@ -207,7 +206,7 @@ describe('Sprint 21 — CAP Endurance + Per-Mission Fuel Consumption', () => {
     const fighter = findFighter('allied')
     const recoverySq = makeSquadron('vf-recover', fighter.id, 'tf-16', 'allied', 12, {
       deckStatus: 'recovering',
-      readyTime: { day: 1, hour: 7, minute: 0 },  // T0 + 60 min
+      readyTime: { day: 1, hour: 7, minute: 0 } // T0 + 60 min
     })
     state.squadrons.set('vf-recover', recoverySq)
 

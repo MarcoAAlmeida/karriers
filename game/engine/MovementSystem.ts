@@ -1,5 +1,4 @@
-import type { HexCoord } from '../types'
-import type { TaskGroup } from '../types'
+import type { HexCoord, TaskGroup } from '../types'
 import type { TerrainMap } from '../utils/pathfinding'
 import { coordKey, speedToHexesPerStep } from '../utils/hexMath'
 import { findPath, advanceAlongPath, isSurfacePassable } from '../utils/pathfinding'

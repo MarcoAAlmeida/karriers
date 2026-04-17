@@ -2,7 +2,7 @@
   <UModal
     v-model:open="open"
     :title="modalTitle"
-    :ui="{ width: 'sm:max-w-lg' }"
+    :ui="{ content: 'sm:max-w-lg' }"
   >
     <template #content>
       <div
@@ -45,7 +45,7 @@
           </div>
 
           <!-- Mission details -->
-          <UCard :ui="{ body: { padding: 'px-4 py-3' } }">
+          <UCard :ui="{ body: 'px-4 py-3' }">
             <dl class="space-y-1.5 text-sm">
               <div class="flex gap-2">
                 <dt class="text-slate-500 w-24 shrink-0">
@@ -94,7 +94,7 @@
           </UCard>
 
           <!-- Aircraft summary -->
-          <UCard :ui="{ body: { padding: 'px-4 py-3' } }">
+          <UCard :ui="{ body: 'px-4 py-3' }">
             <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
               Aircraft
             </p>
@@ -146,7 +146,7 @@
           <!-- Combat results (resolved only) -->
           <UCard
             v-if="strikeResult"
-            :ui="{ body: { padding: 'px-4 py-3' } }"
+            :ui="{ body: 'px-4 py-3' }"
           >
             <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
               Combat Results — {{ strikeResult.hits.length }} hit{{ strikeResult.hits.length !== 1 ? 's' : '' }}

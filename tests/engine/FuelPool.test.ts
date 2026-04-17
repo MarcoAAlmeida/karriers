@@ -6,7 +6,7 @@
  * correctly from scenario JSON.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { GameEngine, createEmptyState } from '@game/engine/GameEngine'
 import type { MutableGameState } from '@game/engine/GameEngine'
 import { scenarioFromDefinition } from '@game/data/scenarioRepository'
@@ -18,7 +18,7 @@ import { AIRCRAFT_TYPES } from '@game/data/aircraftTypes'
 
 const T0: GameTime = { day: 1, hour: 6, minute: 0 }
 const T_END: GameTime = { day: 2, hour: 6, minute: 0 }
-const STEP_MS = 30 * 130  // one 30-min step at speed-1
+const STEP_MS = 30 * 130 // one 30-min step at speed-1
 
 function makeCVClass(id: number, side: 'allied' | 'japanese' = 'allied'): ShipClass {
   return {
@@ -73,7 +73,7 @@ function makeShip(id: string, classId: number, tgId: string, side: 'allied' | 'j
 function makeTG(
   id: string,
   side: 'allied' | 'japanese',
-  pos: { q: number; r: number },
+  pos: { q: number, r: number },
   shipIds: string[] = []
 ): TaskGroup {
   return {
@@ -140,7 +140,6 @@ function buildBaseState(alliedPool = 15000, japPool = 12000): MutableGameState {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('Sprint 20 — Fuel Pool', () => {
-
   // ── 1. Pool decrements on launch ──────────────────────────────────────────
   it('fuel pool decrements after a mission is launched', () => {
     const state = buildBaseState(15000, 12000)
@@ -166,7 +165,7 @@ describe('Sprint 20 — Fuel Pool', () => {
     steps(engine, 1)
 
     expect(state.alliedFuelPool).toBeLessThan(15000)
-    expect(state.japaneseFuelPool).toBe(12000)  // enemy pool untouched
+    expect(state.japaneseFuelPool).toBe(12000) // enemy pool untouched
   })
 
   // ── 2. Oiler sinking deducts correct payload ──────────────────────────────
@@ -221,7 +220,7 @@ describe('Sprint 20 — Fuel Pool', () => {
 
   // ── 3. Exhaustion gates launch attempts ───────────────────────────────────
   it('launch is rejected when the side fuel pool is at zero', () => {
-    const state = buildBaseState(0, 12000)  // allied pool empty
+    const state = buildBaseState(0, 12000) // allied pool empty
 
     const tg = makeTG('tf-16', 'allied', { q: 40, r: 50 }, ['cv-1'])
     state.taskGroups.set('tf-16', tg)
@@ -250,7 +249,7 @@ describe('Sprint 20 — Fuel Pool', () => {
 
   // ── 4. Game ends when both sides are exhausted ────────────────────────────
   it('ScenarioEnded fires as a draw when both fuel pools reach zero', () => {
-    const state = buildBaseState(0, 0)  // both pools already empty
+    const state = buildBaseState(0, 0) // both pools already empty
 
     // Minimal TGs to keep the engine happy (no carriers so no air ops)
     const tg = makeTG('tf-empty', 'allied', { q: 40, r: 50 }, ['dd-1'])
@@ -266,7 +265,9 @@ describe('Sprint 20 — Fuel Pool', () => {
     const engine = new GameEngine(state, T0, T_END, 1)
 
     let endedEvent: { winner: string } | null = null
-    engine.events.on('ScenarioEnded', (e) => { endedEvent = e })
+    engine.events.on('ScenarioEnded', (e) => {
+      endedEvent = e
+    })
 
     steps(engine, 1)
 

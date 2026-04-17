@@ -300,8 +300,8 @@ export const MIDWAY: Scenario = {
   difficulty: 'medium',
   durationHours: 72,
 
-  startTime: { day: 1, hour: 6, minute: 0 },   // June 4, 0600
-  endTime: { day: 4, hour: 6, minute: 0 },       // June 7, 0600
+  startTime: { day: 1, hour: 6, minute: 0 }, // June 4, 0600
+  endTime: { day: 4, hour: 6, minute: 0 }, // June 7, 0600
 
   mapBounds: { minQ: 0, maxQ: 71, minR: 0, maxR: 83 },
 

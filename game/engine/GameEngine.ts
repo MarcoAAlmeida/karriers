@@ -17,7 +17,7 @@ import type {
   ShipClass,
   VictoryCondition
 } from '../types'
-import { gameTimeToMinutes } from '../types'
+import { gameTimeToMinutes, minutesToGameTime } from '../types'
 import type { TerrainMap } from '../utils/pathfinding'
 import { hexDistance } from '../utils/hexMath'
 import type { TimeScale } from './TimeSystem'
@@ -36,8 +36,8 @@ import { createRng } from '../utils/dice'
 import type { Rng } from '../utils/dice'
 import type { ScenarioParams } from '../types/scenario'
 import { DEFAULT_SCENARIO_PARAMS } from '../types/scenario'
+
 export type { ScenarioParams }
-import { minutesToGameTime } from '../types'
 
 // ── Engine state types ─────────────────────────────────────────────────────
 
@@ -79,7 +79,7 @@ export interface GameSnapshot {
   gameEvents: GameEvent[]
   sightingReports: import('../types').SightingReport[]
   /** Planned movement path for each task group (for route line rendering). */
-  movementPaths: ReadonlyMap<string, readonly { q: number; r: number }[]>
+  movementPaths: ReadonlyMap<string, readonly { q: number, r: number }[]>
   /** Current aviation fuel pools — for HUD fuel gauges. */
   alliedFuelPool: number
   japaneseFuelPool: number
@@ -124,26 +124,26 @@ export interface EngineEvents {
   StepComplete: GameSnapshot
   SightingDetected: import('../types').SightingReport
   ShipDamaged: CombatEvent
-  ShipSunk: { shipId: string; taskGroupId: string; side: Side; time: GameTime }
-  StrikeInbound: { flightPlanId: string; targetTaskGroupId: string; time: GameTime }
+  ShipSunk: { shipId: string, taskGroupId: string, side: Side, time: GameTime }
+  StrikeInbound: { flightPlanId: string, targetTaskGroupId: string, time: GameTime }
   /** Fires when a Japanese strike is launched — Allied player should be warned. */
-  EnemyStrikeDetected: { flightPlanId: string; targetHex: HexCoord; estimatedArrivalTime: GameTime }
+  EnemyStrikeDetected: { flightPlanId: string, targetHex: HexCoord, estimatedArrivalTime: GameTime }
   /** Fires when a scout mission resolves at its target hex. */
-  ScoutContactRevealed: { flightPlanId: string; targetHex: HexCoord; contactFound: boolean; side: Side; time: GameTime }
-  ScenarioEnded: { winner: Side | 'draw'; time: GameTime; alliedPoints: number; japanesePoints: number }
+  ScoutContactRevealed: { flightPlanId: string, targetHex: HexCoord, contactFound: boolean, side: Side, time: GameTime }
+  ScenarioEnded: { winner: Side | 'draw', time: GameTime, alliedPoints: number, japanesePoints: number }
 }
 
 // ── Order payloads ─────────────────────────────────────────────────────────
 
-export type OrderPayload =
-  | { type: 'set-order'; taskGroupId: string; order: TaskGroupOrder; destination?: { q: number; r: number } }
-  | { type: 'set-speed'; taskGroupId: string; speedKnots: number }
-  | { type: 'set-destination'; taskGroupId: string; destination: { q: number; r: number } }
-  | { type: 'launch-strike'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number }; oneWay?: boolean }
-  | { type: 'launch-cap'; taskGroupId: string; squadronIds: string[] }
-  | { type: 'launch-search'; taskGroupId: string; squadronIds: string[]; searchSector: number }
-  | { type: 'launch-scout'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number } }
-  | { type: 'recall-mission'; flightPlanId: string }
+export type OrderPayload
+  = | { type: 'set-order', taskGroupId: string, order: TaskGroupOrder, destination?: { q: number, r: number } }
+    | { type: 'set-speed', taskGroupId: string, speedKnots: number }
+    | { type: 'set-destination', taskGroupId: string, destination: { q: number, r: number } }
+    | { type: 'launch-strike', taskGroupId: string, squadronIds: string[], targetHex: { q: number, r: number }, oneWay?: boolean }
+    | { type: 'launch-cap', taskGroupId: string, squadronIds: string[] }
+    | { type: 'launch-search', taskGroupId: string, squadronIds: string[], searchSector: number }
+    | { type: 'launch-scout', taskGroupId: string, squadronIds: string[], targetHex: { q: number, r: number } }
+    | { type: 'recall-mission', flightPlanId: string }
 
 // ── GameEngine ─────────────────────────────────────────────────────────────
 
@@ -237,7 +237,7 @@ export class GameEngine {
           mission: 'strike',
           targetHex: payload.targetHex,
           oneWay: payload.oneWay,
-          targetTaskGroupId: this.resolveTargetTG(payload.targetHex, payload.taskGroupId),
+          targetTaskGroupId: this.resolveTargetTG(payload.targetHex, payload.taskGroupId)
         }
         this.airOpsSystem.queueLaunch(order)
         break
@@ -372,7 +372,7 @@ export class GameEngine {
     )
 
     // 4. Air operations — process recoveries and queued launches
-    const taskGroupPositions = new Map<string, { q: number; r: number }>()
+    const taskGroupPositions = new Map<string, { q: number, r: number }>()
     for (const tg of this.state.taskGroups.values()) {
       taskGroupPositions.set(tg.id, tg.position)
     }
@@ -575,7 +575,7 @@ export class GameEngine {
     const enemySide: Side = launchingTG.side === 'allied' ? 'japanese' : 'allied'
 
     let bestId: string | undefined
-    let bestDist = 3  // max hex radius to match
+    let bestDist = 3 // max hex radius to match
 
     for (const tg of this.state.taskGroups.values()) {
       if (tg.side !== enemySide) continue
@@ -633,12 +633,12 @@ export class GameEngine {
       gameEvents: snap.gameEvents,
       sightingReports: snap.sightingReports,
       alliedFuelPool: snap.alliedFuelPool,
-      japaneseFuelPool: snap.japaneseFuelPool,
+      japaneseFuelPool: snap.japaneseFuelPool
     }
   }
 
   private buildSnapshot(): GameSnapshot {
-    const movementPaths = new Map<string, readonly { q: number; r: number }[]>()
+    const movementPaths = new Map<string, readonly { q: number, r: number }[]>()
     for (const tg of this.state.taskGroups.values()) {
       const path = this.movementSystem.getPath(tg.id)
       if (path.length > 0) movementPaths.set(tg.id, path)
@@ -708,7 +708,7 @@ export class GameEngine {
   private resolveScoutMission(
     plan: FlightPlan,
     currentTime: GameTime
-  ): { event: CombatEvent; contactFound: boolean; contact?: ContactRecord } {
+  ): { event: CombatEvent, contactFound: boolean, contact?: ContactRecord } {
     const targetHex = plan.targetHex ?? { q: 0, r: 0 }
     const enemySide: Side = plan.side === 'allied' ? 'japanese' : 'allied'
     const SCOUT_RADIUS_HEXES = 3

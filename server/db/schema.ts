@@ -10,7 +10,7 @@ export const games = sqliteTable('games', {
   durationSteps: integer('duration_steps').notNull(),
   alliedPoints: integer('allied_points').notNull().default(0),
   japanesePoints: integer('japanese_points').notNull().default(0),
-  createdAt: integer('created_at').notNull(),
+  createdAt: integer('created_at').notNull()
 })
 
 export const steps = sqliteTable('steps', {
@@ -18,5 +18,5 @@ export const steps = sqliteTable('steps', {
   gameId: text('game_id').notNull().references(() => games.id),
   stepNumber: integer('step_number').notNull(),
   alliedSnapshotJson: text('allied_snapshot_json').notNull(),
-  japaneseSnapshotJson: text('japanese_snapshot_json').notNull(),
+  japaneseSnapshotJson: text('japanese_snapshot_json').notNull()
 })

@@ -9,7 +9,7 @@ export const useForcesStore = defineStore('forces', () => {
   const squadrons = ref<Map<string, Squadron>>(new Map())
   const flightPlans = ref<Map<string, FlightPlan>>(new Map())
   /** Movement paths for rendering route lines on the map. */
-  const movementPaths = ref<Map<string, readonly { q: number; r: number }[]>>(new Map())
+  const movementPaths = ref<Map<string, readonly { q: number, r: number }[]>>(new Map())
   /** Current aviation fuel pools — decremented each step. */
   const alliedFuelPool = ref<number>(0)
   const japaneseFuelPool = ref<number>(0)
@@ -48,7 +48,7 @@ export const useForcesStore = defineStore('forces', () => {
   function shipsInGroup(taskGroupId: string): Ship[] {
     const tg = taskGroups.value.get(taskGroupId)
     if (!tg) return []
-    return tg.shipIds.flatMap(id => {
+    return tg.shipIds.flatMap((id) => {
       const s = ships.value.get(id)
       return s ? [s] : []
     })

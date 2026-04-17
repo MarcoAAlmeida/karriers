@@ -114,7 +114,7 @@ export const DEFAULT_SCENARIO_PARAMS: ScenarioParams = {
   fireSpreadChance: 0.22,
   floodDamageRate: 0.08,
 
-  detectionRangeMultiplier: 1.0,
+  detectionRangeMultiplier: 1.0
 }
 
 export interface GameTime {
@@ -139,12 +139,12 @@ export function advanceGameTime(t: GameTime, steps = 1): GameTime {
   return minutesToGameTime(gameTimeToMinutes(t) + steps * 30)
 }
 
-export type VictoryConditionType =
-  | 'sink-carrier'
-  | 'sink-ship-class'
-  | 'control-hex'
-  | 'survive-until'
-  | 'sink-total-tonnage'
+export type VictoryConditionType
+  = | 'sink-carrier'
+    | 'sink-ship-class'
+    | 'control-hex'
+    | 'survive-until'
+    | 'sink-total-tonnage'
 
 export interface VictoryCondition {
   id: string
@@ -168,7 +168,7 @@ export interface ScenarioForce {
 export interface ScenarioMetadata {
   id: string
   name: string
-  date: string           // historical date, e.g. "June 4, 1942"
+  date: string // historical date, e.g. "June 4, 1942"
   description: string
   difficulty: 'easy' | 'medium' | 'hard'
   durationHours: number

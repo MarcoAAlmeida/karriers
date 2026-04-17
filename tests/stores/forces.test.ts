@@ -56,7 +56,7 @@ function makeSnapshot(
     sightingReports: [],
     movementPaths: new Map(),
     alliedFuelPool: 0,
-    japaneseFuelPool: 0,
+    japaneseFuelPool: 0
   }
 }
 

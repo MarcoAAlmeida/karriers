@@ -19,7 +19,7 @@ import { DEFAULT_SCENARIO_PARAMS } from '../types/scenario'
 // ── Constants (internal only) ──────────────────────────────────────────────
 
 /** Steps needed to spot aircraft on deck before launch. */
-const SPOT_STEPS = 1
+const _SPOT_STEPS = 1
 /** Steps needed to recover and secure aircraft after landing. */
 const RECOVERY_STEPS = 1
 
@@ -78,8 +78,8 @@ export class AirOpsSystem {
     taskGroups: Map<string, TaskGroup>,
     ships: Map<string, Ship>,
     currentTime: GameTime,
-    fuelPools: { allied: number; japanese: number },
-    contacts: { allied: Map<string, ContactRecord>; japanese: Map<string, ContactRecord> }
+    fuelPools: { allied: number, japanese: number },
+    contacts: { allied: Map<string, ContactRecord>, japanese: Map<string, ContactRecord> }
   ): FlightPlan[] {
     const newPlans: FlightPlan[] = []
 
@@ -169,14 +169,14 @@ export class AirOpsSystem {
     // Any other operational carrier still in this TG?
     const hasRemainingCarrier = tg.shipIds
       .filter(id => id !== sunkShipId)
-      .some(id => {
+      .some((id) => {
         const ship = ships.get(id)
         if (!ship || ship.status === 'sunk') return false
         const sc = this.shipClasses.get(ship.classId)
         return sc?.type.includes('carrier') ?? false
       })
 
-    if (hasRemainingCarrier) return  // other carriers absorb the survivors
+    if (hasRemainingCarrier) return // other carriers absorb the survivors
 
     // Last carrier in TG — destroy all on-deck squadrons
     for (const sq of squadrons.values()) {
@@ -201,7 +201,7 @@ export class AirOpsSystem {
     flightPlans: Map<string, FlightPlan>,
     taskGroups: Map<string, TaskGroup>,
     squadrons: Map<string, Squadron>,
-    contacts: { allied: Map<string, ContactRecord>; japanese: Map<string, ContactRecord> },
+    contacts: { allied: Map<string, ContactRecord>, japanese: Map<string, ContactRecord> },
     currentTime: GameTime
   ): void {
     const nowMin = gameTimeToMinutes(currentTime)
@@ -229,7 +229,6 @@ export class AirOpsSystem {
           plan.currentHex = lerpHex(plan.launchHex, plan.targetHex, t)
           plan.currentHexTime = currentTime
         }
-
       } else if (plan.status === 'returning') {
         // All returning missions (strike, CAP, scout, search…) re-anchor returnEta
         // to the carrier's current position every step so planes always fly home to
@@ -293,7 +292,7 @@ export class AirOpsSystem {
     ships: Map<string, Ship>,
     carrierPosition: HexCoord,
     currentTime: GameTime,
-    fuelPools: { allied: number; japanese: number }
+    fuelPools: { allied: number, japanese: number }
   ): FlightPlan | null {
     // Determine side from the first valid squadron
     const sampleSide = squadrons.get(order.squadronIds[0] ?? '')?.side
@@ -311,7 +310,7 @@ export class AirOpsSystem {
         .filter(s => (this.shipClasses.get(s.classId)?.type.includes('carrier')) ?? false)
 
       if (carrierShips.length > 0 && !carrierShips.some(s => s.status !== 'sunk')) {
-        return null  // all carriers sunk — no launches possible
+        return null // all carriers sunk — no launches possible
       }
     }
 
@@ -338,7 +337,7 @@ export class AirOpsSystem {
           } else {
             maxRange = aircraft.maxRange * 0.5 * (1 - this.params.fuelReserve)
           }
-          if (distNm > maxRange) continue  // out of range
+          if (distNm > maxRange) continue // out of range
         }
       }
 
@@ -369,7 +368,7 @@ export class AirOpsSystem {
       launchHex: carrierPosition,
       currentHex: carrierPosition,
       currentHexTime: currentTime,
-      targetTaskGroupId: order.targetTaskGroupId,
+      targetTaskGroupId: order.targetTaskGroupId
     }
 
     // Transition squadrons to airborne
@@ -391,7 +390,7 @@ export class AirOpsSystem {
       strike: this.params.strikeFuelRate,
       intercept: this.params.capFuelRate,
       escort: this.params.escortFuelRate,
-      asw: this.params.aswFuelRate,
+      asw: this.params.aswFuelRate
     }
     const ratePerHex = missionFuelRates[order.mission] ?? 1
     const rangeHexes = order.targetHex
@@ -455,7 +454,7 @@ export class AirOpsSystem {
             const sq = squadrons.get(sqId)
             if (sq) sq.taskGroupId = alternate.id
           }
-          continue  // will be re-evaluated when new returnEta passes
+          continue // will be re-evaluated when new returnEta passes
         } else {
           // No reachable carrier — ditch
           plan.status = 'lost'
@@ -529,7 +528,7 @@ export class AirOpsSystem {
       if (sq.deckStatus !== 'recovering') continue
       if (sq.readyTime && gameTimeToMinutes(sq.readyTime) > nowMin) continue
       sq.deckStatus = 'hangared'
-      sq.fuelLoad = 0  // needs refueling
+      sq.fuelLoad = 0 // needs refueling
       sq.ordnanceLoaded = 'none'
       sq.readyTime = undefined
     }
@@ -553,7 +552,7 @@ export class AirOpsSystem {
   ): boolean {
     const tg = taskGroups.get(tgId)
     if (!tg) return false
-    return tg.shipIds.some(shipId => {
+    return tg.shipIds.some((shipId) => {
       const ship = ships.get(shipId)
       if (!ship || ship.status === 'sunk') return false
       const sc = this.shipClasses.get(ship.classId)
@@ -638,7 +637,7 @@ export class AirOpsSystem {
   private rearmMinutesFor(mission: MissionType): number {
     if (mission === 'cap' || mission === 'intercept') return this.params.capRearmMinutes
     if (mission === 'strike' || mission === 'escort') return this.params.strikeRearmMinutes
-    return this.params.scoutRearmMinutes  // scout, search, asw
+    return this.params.scoutRearmMinutes // scout, search, asw
   }
 
   // ── ETA computation ───────────────────────────────────────────────────────

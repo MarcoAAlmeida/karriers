@@ -32,7 +32,10 @@
 
     <!-- System status -->
     <div class="flex items-center gap-1.5">
-      <div class="w-1.5 h-1.5 rounded-full" :class="gameStore.isPaused ? 'bg-red-500' : 'bg-emerald-400'" />
+      <div
+        class="w-1.5 h-1.5 rounded-full"
+        :class="gameStore.isPaused ? 'bg-red-500' : 'bg-emerald-400'"
+      />
       <span class="text-slate-400 text-xs">All Systems Operational</span>
     </div>
   </header>

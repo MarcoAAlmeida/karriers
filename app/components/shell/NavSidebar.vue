@@ -19,8 +19,14 @@
         ]"
         :title="!expanded ? item.label : undefined"
       >
-        <UIcon :name="item.icon" class="shrink-0 w-4 h-4" />
-        <span v-if="expanded" class="truncate tracking-wide">{{ item.label }}</span>
+        <UIcon
+          :name="item.icon"
+          class="shrink-0 w-4 h-4"
+        />
+        <span
+          v-if="expanded"
+          class="truncate tracking-wide"
+        >{{ item.label }}</span>
       </button>
     </div>
 
@@ -30,8 +36,14 @@
         class="flex items-center gap-2.5 w-full rounded-md px-2.5 py-2 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-200 transition-colors cursor-default"
         :title="!expanded ? 'Settings' : undefined"
       >
-        <UIcon name="i-heroicons-cog-6-tooth" class="shrink-0 w-4 h-4" />
-        <span v-if="expanded" class="truncate tracking-wide">Settings</span>
+        <UIcon
+          name="i-heroicons-cog-6-tooth"
+          class="shrink-0 w-4 h-4"
+        />
+        <span
+          v-if="expanded"
+          class="truncate tracking-wide"
+        >Settings</span>
       </button>
     </div>
   </nav>
@@ -41,9 +53,9 @@
 defineProps<{ expanded: boolean }>()
 
 const mainItems = [
-  { id: 'map',      icon: 'i-heroicons-squares-2x2',    label: 'Tactical Map', active: true  },
-  { id: 'units',    icon: 'i-heroicons-users',           label: 'Units',        active: false },
-  { id: 'missions', icon: 'i-heroicons-paper-airplane',  label: 'Missions',     active: false },
-  { id: 'intel',    icon: 'i-heroicons-eye',             label: 'Intel',        active: false },
+  { id: 'map', icon: 'i-heroicons-squares-2x2', label: 'Tactical Map', active: true },
+  { id: 'units', icon: 'i-heroicons-users', label: 'Units', active: false },
+  { id: 'missions', icon: 'i-heroicons-paper-airplane', label: 'Missions', active: false },
+  { id: 'intel', icon: 'i-heroicons-eye', label: 'Intel', active: false }
 ]
 </script>

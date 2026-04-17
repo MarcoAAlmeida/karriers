@@ -17,7 +17,7 @@ import type { ScenarioParams } from '@game/types/scenario'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-const ONE_STEP_MS = 30 * 130 + 1   // just over one 30-min step at 1× speed
+const ONE_STEP_MS = 30 * 130 + 1 // just over one 30-min step at 1× speed
 
 /**
  * Run the engine to ScenarioEnded (or safety limit) and return step count.
@@ -53,7 +53,7 @@ function runToCompletion(params: Partial<ScenarioParams> = {}): {
     engine.tick(ONE_STEP_MS)
     stepCount++
     if (!ended) {
-      ai.step(engine.getSnapshot(), (order) => engine.issueOrder(order))
+      ai.step(engine.getSnapshot(), order => engine.issueOrder(order))
     }
   }
 
@@ -81,7 +81,7 @@ describe('ScenarioParams', () => {
       strikeFuelRate: 20,
       capFuelRate: 20,
       scoutFuelRate: 10,
-      searchFuelRate: 10,
+      searchFuelRate: 10
     })
 
     // High-fuel game must end sooner
@@ -107,7 +107,7 @@ describe('ScenarioParams', () => {
     const stateB = buildStateFromScenario(MIDWAY, { seed: 9999, spawnMode: 'seeded' })
 
     const tgIds = [...stateA.taskGroups.keys()]
-    const allSame = tgIds.every(id => {
+    const allSame = tgIds.every((id) => {
       const a = stateA.taskGroups.get(id)!
       const b = stateB.taskGroups.get(id)!
       return a.position.q === b.position.q && a.position.r === b.position.r
