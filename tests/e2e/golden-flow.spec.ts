@@ -19,13 +19,13 @@ interface GameState {
   phase: string
   isPaused: boolean
   timeScale: number
-  currentTime: { day: number; hour: number; minute: number }
-  taskGroups: Array<{ id: string; name: string; side: string }>
-  ships: Array<{ id: string; name: string; side: string; status: string; taskGroupId: string; isCarrier: boolean }>
-  squadrons: Array<{ id: string; name: string; side: string; deckStatus: string; taskGroupId: string }>
-  flightPlans: Array<{ id: string; mission: string; status: string; side: string; targetHex?: { q: number; r: number } }>
-  contacts: Array<{ id: string; lastKnownHex: { q: number; r: number }; contactType: string }>
-  sunkMarkers: Array<{ hex: { q: number; r: number }; side: string; shipId: string }>
+  currentTime: { day: number, hour: number, minute: number }
+  taskGroups: Array<{ id: string, name: string, side: string }>
+  ships: Array<{ id: string, name: string, side: string, status: string, taskGroupId: string, isCarrier: boolean }>
+  squadrons: Array<{ id: string, name: string, side: string, deckStatus: string, taskGroupId: string }>
+  flightPlans: Array<{ id: string, mission: string, status: string, side: string, targetHex?: { q: number, r: number } }>
+  contacts: Array<{ id: string, lastKnownHex: { q: number, r: number }, contactType: string }>
+  sunkMarkers: Array<{ hex: { q: number, r: number }, side: string, shipId: string }>
   alliedContactCount: number
   sightingLogLength: number
   combatLogLength: number
@@ -60,7 +60,7 @@ async function loadMidway(page: import('@playwright/test').Page) {
 
 /** Advance n × 30-min game steps synchronously. */
 async function ff(page: import('@playwright/test').Page, nSteps: number) {
-  await page.evaluate((n) => window.__GAME_ACTIONS__.fastForward(n), nSteps)
+  await page.evaluate(n => window.__GAME_ACTIONS__.fastForward(n), nSteps)
 }
 
 /** Issue a launch-strike order at the nearest contact to TF-16 via the action bridge. */
@@ -72,7 +72,8 @@ async function launchStrikeViaBridge(page: import('@playwright/test').Page): Pro
     const sq = state.squadrons.find(sq => sq.taskGroupId === tf16.id && sq.deckStatus === 'hangared')
     if (!sq || state.contacts.length === 0) return false
     // Pick the nearest contact to TF-16 to avoid range-rejected launches
-    const tf16pos = (tf16 as any).position as { q: number; r: number }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tf16pos = (tf16 as any).position as { q: number, r: number }
     const contact = [...state.contacts].sort((a, b) => {
       const dA = Math.abs(a.lastKnownHex.q - tf16pos.q) + Math.abs(a.lastKnownHex.r - tf16pos.r)
       const dB = Math.abs(b.lastKnownHex.q - tf16pos.q) + Math.abs(b.lastKnownHex.r - tf16pos.r)
@@ -82,7 +83,7 @@ async function launchStrikeViaBridge(page: import('@playwright/test').Page): Pro
       type: 'launch-strike',
       taskGroupId: tf16.id,
       squadronIds: [sq.id],
-      targetHex: contact.lastKnownHex,
+      targetHex: contact.lastKnownHex
     })
     return true
   })
@@ -91,7 +92,6 @@ async function launchStrikeViaBridge(page: import('@playwright/test').Page): Pro
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test.describe('Golden Flow — Battle of Midway', () => {
-
   // ── A. Load / UI (no simulation needed) ────────────────────────────────────
 
   test('scenario loads paused at Mon 06:00 with action bridge available', async ({ page }) => {
@@ -113,7 +113,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     )
     expect(tf16Id).not.toBeNull()
 
-    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
+    await page.evaluate(id => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
 
     await expect(page.getByTestId('tg-panel')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByTestId('tg-panel')).toContainText('Task Force 16')
@@ -126,7 +126,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     const tf16Id = await page.evaluate(() =>
       window.__GAME_STATE__.taskGroups.find(tg => tg.name === 'Task Force 16')?.id ?? null
     )
-    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
+    await page.evaluate(id => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
     await page.getByTestId('air-ops-btn').click()
     await page.getByRole('tab', { name: 'Strike' }).click()
     await expect(page.getByTestId('air-ops-tab-strike-content')).toBeVisible({ timeout: 5_000 })
@@ -160,7 +160,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
       window.__GAME_STATE__.taskGroups.find(tg => tg.name === 'Task Force 16')?.id ?? null
     )
     expect(tf16Id).not.toBeNull()
-    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
+    await page.evaluate(id => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
     await expect(page.getByTestId('tg-panel')).toBeVisible({ timeout: 5_000 })
 
     await page.getByTestId('air-ops-btn').click()
@@ -199,7 +199,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     expect(strike!.targetHex).toBeDefined()
 
     // Reopen Air Ops — Airborne tab should list the outbound mission
-    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
+    await page.evaluate(id => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
     await page.getByTestId('air-ops-btn').click()
     await page.getByRole('tab', { name: 'Airborne' }).click()
     await expect(page.getByTestId('air-ops-airborne-content')).toBeVisible({ timeout: 5_000 })
@@ -246,7 +246,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     // Get contact → launch → advance until airborne
     await ff(page, 10)
     await launchStrikeViaBridge(page)
-    await ff(page, 1)  // launch processed → airborne
+    await ff(page, 1) // launch processed → airborne
 
     const planId = await page.evaluate(() =>
       window.__GAME_STATE__.flightPlans.find(fp => fp.status === 'airborne' || fp.status === 'inbound')?.id ?? null
@@ -254,7 +254,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     expect(planId).not.toBeNull()
 
     // Select via bridge (simulates dot-click on canvas)
-    await page.evaluate((id) => window.__GAME_ACTIONS__.selectFlightPlan(id), planId)
+    await page.evaluate(id => window.__GAME_ACTIONS__.selectFlightPlan(id), planId)
 
     const modal = page.getByTestId('strike-detail-modal')
     await expect(modal).toBeVisible({ timeout: 5_000 })
@@ -284,7 +284,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     expect(runningBefore).toBe(true)
 
     // Open modal via action bridge (dot-click path) — should auto-pause
-    await page.evaluate((id) => window.__GAME_ACTIONS__.selectFlightPlan(id), planId)
+    await page.evaluate(id => window.__GAME_ACTIONS__.selectFlightPlan(id), planId)
     await expect(page.getByTestId('strike-detail-modal')).toBeVisible({ timeout: 5_000 })
     // useModalPause fires asynchronously; wait for the reactive state to settle
     await page.waitForFunction(() => window.__GAME_STATE__.isPaused === true, { timeout: 3_000 })
@@ -334,14 +334,14 @@ test.describe('Golden Flow — Battle of Midway', () => {
     await ff(page, 6)
 
     const ijnTgId = await page.evaluate(() => {
-      const contacts = window.__GAME_STATE__.contacts
+      const _contacts = window.__GAME_STATE__.contacts
       const tgs = window.__GAME_STATE__.taskGroups
       // Pick an IJN TG that has a known contact
       return tgs.find(tg => tg.side === 'japanese')?.id ?? null
     })
     expect(ijnTgId).not.toBeNull()
 
-    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), ijnTgId)
+    await page.evaluate(id => window.__GAME_ACTIONS__.selectTaskGroup(id!), ijnTgId)
 
     await expect(page.getByTestId('tg-panel')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByTestId('tg-panel')).toContainText('IJN')
@@ -361,6 +361,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     const ijnTgId = await page.evaluate(() => {
       const state = window.__GAME_STATE__
       for (const tg of state.taskGroups.filter(t => t.side === 'japanese')) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ships = state.ships.filter(s => (s as any).taskGroupId === tg.id)
         const hasSunk = ships.some(s => s.status === 'sunk')
         const hasSurvivor = ships.some(s => s.status !== 'sunk')
@@ -371,7 +372,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
     })
     expect(ijnTgId).not.toBeNull()
 
-    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), ijnTgId)
+    await page.evaluate(id => window.__GAME_ACTIONS__.selectTaskGroup(id!), ijnTgId)
     await expect(page.getByTestId('tg-panel')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByTestId('tg-panel')).toContainText('IJN')
   })
@@ -390,7 +391,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
       window.__GAME_STATE__.taskGroups.find(tg => tg.name === 'Task Force 16')?.id ?? null
     )
     expect(tf16Id).not.toBeNull()
-    await page.evaluate((id) => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
+    await page.evaluate(id => window.__GAME_ACTIONS__.selectTaskGroup(id!), tf16Id)
     await page.getByTestId('air-ops-btn').click()
     await page.getByRole('tab', { name: 'Strike' }).click()
     await expect(page.getByTestId('air-ops-tab-strike-content')).toBeVisible({ timeout: 5_000 })
@@ -398,7 +399,9 @@ test.describe('Golden Flow — Battle of Midway', () => {
     // Select every available squadron row (wait for at least one to appear first)
     await expect(page.getByTestId('strike-squadron-row').first()).toBeVisible({ timeout: 5_000 })
     const rows = await page.getByTestId('strike-squadron-row').all()
-    for (const row of rows) { await row.click() }
+    for (const row of rows) {
+      await row.click()
+    }
 
     // Prefer carrier-force contact
     const carrierContactId = await page.evaluate(() => {
@@ -411,7 +414,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
       await page.getByTestId('strike-target-select').selectOption({ index: 1 })
     }
     await expect(page.getByTestId('launch-strike-btn')).toBeEnabled({ timeout: 3_000 })
-    await page.getByTestId('launch-strike-btn').click()  // closes modal, resumes
+    await page.getByTestId('launch-strike-btn').click() // closes modal, resumes
 
     // Advance: 1 step to go airborne, then up to 40 steps (~20 h) for strike + recovery
     await ff(page, 1)
@@ -437,7 +440,7 @@ test.describe('Golden Flow — Battle of Midway', () => {
           sqIds: state.squadrons
             .filter(sq => sq.taskGroupId === tf16Id && sq.deckStatus === 'hangared')
             .map(sq => sq.id),
-          targetHex: state.contacts[0]?.lastKnownHex ?? null,
+          targetHex: state.contacts[0]?.lastKnownHex ?? null
         }
       })
       if (sqIds.length > 0 && targetHex) {
@@ -464,5 +467,4 @@ test.describe('Golden Flow — Battle of Midway', () => {
     }
     expect(sunkMarkers.some(m => m.side === 'japanese')).toBe(true)
   })
-
 })

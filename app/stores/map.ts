@@ -1,14 +1,14 @@
 export const useMapStore = defineStore('map', () => {
   // ── Selection ─────────────────────────────────────────────────────────────
   const selectedTaskGroupId = ref<string | null>(null)
-  const hoveredHex = ref<{ q: number; r: number } | null>(null)
+  const hoveredHex = ref<{ q: number, r: number } | null>(null)
 
   // ── Flight plan interaction ───────────────────────────────────────────────
   const selectedFlightPlanId = ref<string | null>(null)
   const hoveredFlightPlanId = ref<string | null>(null)
-  const hoverScreenPos = ref<{ x: number; y: number } | null>(null)
+  const hoverScreenPos = ref<{ x: number, y: number } | null>(null)
   const disambiguationPlans = ref<string[]>([])
-  const disambiguationPos = ref<{ x: number; y: number } | null>(null)
+  const disambiguationPos = ref<{ x: number, y: number } | null>(null)
 
   // ── Viewport ──────────────────────────────────────────────────────────────
   /** World-space pixel offset of the viewport origin. */
@@ -23,7 +23,7 @@ export const useMapStore = defineStore('map', () => {
     selectedTaskGroupId.value = id
   }
 
-  function setHoveredHex(hex: { q: number; r: number } | null): void {
+  function setHoveredHex(hex: { q: number, r: number } | null): void {
     hoveredHex.value = hex
   }
 
@@ -39,12 +39,12 @@ export const useMapStore = defineStore('map', () => {
     disambiguationPos.value = null
   }
 
-  function hoverFlightPlan(id: string | null, pos: { x: number; y: number } | null): void {
+  function hoverFlightPlan(id: string | null, pos: { x: number, y: number } | null): void {
     hoveredFlightPlanId.value = id
     hoverScreenPos.value = pos
   }
 
-  function setDisambiguation(planIds: string[], pos: { x: number; y: number }): void {
+  function setDisambiguation(planIds: string[], pos: { x: number, y: number }): void {
     disambiguationPlans.value = planIds
     disambiguationPos.value = pos
   }
@@ -71,6 +71,6 @@ export const useMapStore = defineStore('map', () => {
     selectFlightPlan,
     hoverFlightPlan,
     setDisambiguation,
-    clearDisambiguation,
+    clearDisambiguation
   }
 })

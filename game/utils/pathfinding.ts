@@ -21,8 +21,8 @@ export function isSubmarinePassable(coord: HexCoord, terrain: TerrainMap): boole
 
 interface AStarNode {
   coord: HexCoord
-  g: number   // cost from start
-  f: number   // g + heuristic
+  g: number // cost from start
+  f: number // g + heuristic
 }
 
 /**
@@ -49,7 +49,7 @@ export function findPath(
 
   const open = new Map<string, AStarNode>()
   const closed = new Set<string>()
-  const cameFrom = new Map<string, string>()  // key → parent key
+  const cameFrom = new Map<string, string>() // key → parent key
   const coordCache = new Map<string, HexCoord>()
 
   const startNode: AStarNode = {
@@ -100,7 +100,7 @@ export function findPath(
     }
   }
 
-  return null  // No path found
+  return null // No path found
 }
 
 function reconstructPath(
@@ -114,7 +114,7 @@ function reconstructPath(
     path.unshift(coordCache.get(key)!)
     key = cameFrom.get(key)!
   }
-  path.unshift(coordCache.get(key)!)  // start node
+  path.unshift(coordCache.get(key)!) // start node
   return path
 }
 
@@ -128,7 +128,7 @@ function reconstructPath(
 export function advanceAlongPath(
   path: HexCoord[],
   hexes: number
-): { position: HexCoord; remainingPath: HexCoord[]; overflow: number } {
+): { position: HexCoord, remainingPath: HexCoord[], overflow: number } {
   let remaining = hexes
   let i = 0
 

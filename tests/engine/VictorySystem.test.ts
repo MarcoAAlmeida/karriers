@@ -40,7 +40,7 @@ function makeShip(id: string, side: Ship['side'], classId: number, status: Ship[
   }
 }
 
-function makeTG(id: string, side: TaskGroup['side'], pos: { q: number; r: number }): TaskGroup {
+function makeTG(id: string, side: TaskGroup['side'], pos: { q: number, r: number }): TaskGroup {
   return {
     id,
     name: id,
@@ -186,7 +186,7 @@ describe('VictorySystem — sink-total-tonnage', () => {
   it('is met when sunk tonnage exceeds target', () => {
     const vs = makeVS()
     const ships = new Map([
-      ['yamato', makeShip('yamato', 'japanese', BB_CLASS_ID, 'sunk')],  // 45 000 t
+      ['yamato', makeShip('yamato', 'japanese', BB_CLASS_ID, 'sunk')], // 45 000 t
       ['musashi', makeShip('musashi', 'japanese', BB_CLASS_ID, 'sunk')] // 45 000 t
     ])
     const cond: VictoryCondition = {
@@ -241,8 +241,8 @@ describe('VictorySystem — points tiebreak on time expiry', () => {
       description: ''
     }
     const taskGroups = new Map([
-      ['us-tg',  makeTG('us-tg',  'allied',    { q: 1, r: 1 })],
-      ['ijn-tg', makeTG('ijn-tg', 'japanese',  { q: 2, r: 2 })]
+      ['us-tg', makeTG('us-tg', 'allied', { q: 1, r: 1 })],
+      ['ijn-tg', makeTG('ijn-tg', 'japanese', { q: 2, r: 2 })]
     ])
     // Time has expired
     const expired: GameTime = { day: 3, hour: 0, minute: 0 }

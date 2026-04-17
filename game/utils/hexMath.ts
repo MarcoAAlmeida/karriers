@@ -66,7 +66,7 @@ export function keyToCoord(key: string): HexCoord {
 // ── Hex ↔ pixel ────────────────────────────────────────────────────────────
 
 /** Returns the pixel center of a hex. */
-export function hexToPixel(coord: HexCoord): { x: number; y: number } {
+export function hexToPixel(coord: HexCoord): { x: number, y: number } {
   const Hex = HexClass()
   const h = new Hex({ q: coord.q, r: coord.r })
   return { x: h.x, y: h.y }
@@ -79,7 +79,7 @@ export function pixelToHex(x: number, y: number): HexCoord {
 }
 
 /** Returns the 6 corner points of a hex (useful for drawing). */
-export function hexCorners(coord: HexCoord): { x: number; y: number }[] {
+export function hexCorners(coord: HexCoord): { x: number, y: number }[] {
   const Hex = HexClass()
   const h = new Hex({ q: coord.q, r: coord.r })
   return h.corners
@@ -107,7 +107,7 @@ export function hexDistance(a: HexCoord, b: HexCoord): number {
 export function lerpHex(a: HexCoord, b: HexCoord, t: number): HexCoord {
   return {
     q: Math.round(a.q + (b.q - a.q) * t),
-    r: Math.round(a.r + (b.r - a.r) * t),
+    r: Math.round(a.r + (b.r - a.r) * t)
   }
 }
 

@@ -131,7 +131,7 @@ export class VictorySystem {
   }
 
   private checkControlHex(
-    hex: { q: number; r: number },
+    hex: { q: number, r: number },
     forSide: Side,
     taskGroups: ReadonlyMap<string, TaskGroup>
   ): 'met' | 'pending' {
@@ -190,6 +190,6 @@ export class VictorySystem {
       return 'draw'
     }
 
-    return null  // still in progress
+    return null // still in progress
   }
 }

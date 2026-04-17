@@ -1,12 +1,10 @@
-import type { GameTime, WeatherZone } from '../types'
-import type { Side, TaskGroup } from '../types'
-import type { AircraftType, Squadron } from '../types'
-import type { SightingReport, ContactType } from '../types'
+import type { GameTime, WeatherZone, Side, TaskGroup, AircraftType, Squadron, SightingReport, ContactType, HexCoord } from '../types'
 import type { Rng } from '../utils/dice'
-import { rollD100, chance } from '../utils/dice'
+import { chance } from '../utils/dice'
 import { hexDistance, hexesInRange, coordKey, NM_PER_HEX } from '../utils/hexMath'
-import type { HexCoord } from '../types'
 import { AIRCRAFT_TYPES } from '../data/aircraftTypes'
+import type { ScenarioParams } from '../types/scenario'
+import { DEFAULT_SCENARIO_PARAMS } from '../types/scenario'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -37,10 +35,12 @@ const DEFAULT_VISIBILITY_NM = 80
 export class SearchSystem {
   private rng: Rng
   private aircraftTypes: Map<number, AircraftType>
+  private params: ScenarioParams
 
-  constructor(rng: Rng, aircraftTypes: Map<number, AircraftType>) {
+  constructor(rng: Rng, aircraftTypes: Map<number, AircraftType>, params: ScenarioParams = DEFAULT_SCENARIO_PARAMS) {
     this.rng = rng
     this.aircraftTypes = aircraftTypes
+    this.params = params
   }
 
   /**
@@ -144,9 +144,9 @@ export class SearchSystem {
       if (!aircraft) continue
 
       // Scouts and patrol bombers have full range; other types use half
-      const effectiveRange = (aircraft.role === 'scout' || aircraft.role === 'patrol-bomber')
+      const effectiveRange = ((aircraft.role === 'scout' || aircraft.role === 'patrol-bomber')
         ? aircraft.maxRange
-        : aircraft.maxRange * 0.45
+        : aircraft.maxRange * 0.45) * this.params.detectionRangeMultiplier
 
       if (effectiveRange > bestRange) {
         bestRange = effectiveRange
@@ -218,7 +218,7 @@ export class SearchSystem {
     return 'surface-force'
   }
 
-  private getBestExperience(tg: TaskGroup, _allGroups: ReadonlyMap<string, TaskGroup>): string {
+  private getBestExperience(_tg: TaskGroup, _allGroups: ReadonlyMap<string, TaskGroup>): string {
     // Without full ship→squadron lookup here, default to 'trained'
     return 'trained'
   }

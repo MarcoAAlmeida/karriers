@@ -17,15 +17,15 @@ import { AIRCRAFT_TYPES } from '@game/data/aircraftTypes'
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
-const T0: GameTime    = { day: 1, hour: 6,  minute: 0 }
-const T_END: GameTime = { day: 3, hour: 6,  minute: 0 }
+const T0: GameTime = { day: 1, hour: 6, minute: 0 }
+const T_END: GameTime = { day: 3, hour: 6, minute: 0 }
 const STEP_MS = 30 * 130
 
 function makeCVClass(id: number, side: 'allied' | 'japanese' = 'allied'): ShipClass {
   return {
     id, name: 'fleet-carrier', type: 'fleet-carrier', side,
     displacement: 20000, maxSpeed: 30, aaStrength: 60, armorRating: 50,
-    hullPoints: 100, damageControlRating: 70, flightDeckCapacity: 36, hangarCapacity: 72,
+    hullPoints: 100, damageControlRating: 70, flightDeckCapacity: 36, hangarCapacity: 72
   }
 }
 
@@ -33,17 +33,17 @@ function makeShip(id: string, classId: number, tgId: string, side: 'allied' | 'j
   return {
     id, name: id, classId, side, taskGroupId: tgId, status: 'operational',
     hullDamage: 0, fires: 0, floodingRisk: 0,
-    fuelLevel: 100, ammoLevel: 100, damageControlEfficiency: 100,
+    fuelLevel: 100, ammoLevel: 100, damageControlEfficiency: 100
   }
 }
 
 function makeTG(
   id: string, side: 'allied' | 'japanese',
-  pos: { q: number; r: number }, shipIds: string[]
+  pos: { q: number, r: number }, shipIds: string[]
 ): TaskGroup {
   return {
     id, name: id, side, flagshipId: shipIds[0] ?? '', shipIds, position: pos,
-    course: 90, speed: 0, currentOrder: 'standby', fuelState: 100,
+    course: 90, speed: 0, currentOrder: 'standby', fuelState: 100
   }
 }
 
@@ -53,13 +53,13 @@ function makeSquadron(
   return {
     id, name: id, aircraftTypeId: typeId, side, taskGroupId: tgId,
     aircraftCount: count, maxAircraftCount: count, pilotExperience: 'veteran',
-    deckStatus: 'hangared', fuelLoad: 100, ordnanceLoaded: 'bombs-ap',
+    deckStatus: 'hangared', fuelLoad: 100, ordnanceLoaded: 'bombs-ap'
   }
 }
 
 function makeContact(
   id: string, forSide: 'allied' | 'japanese',
-  tgId: string, hex: { q: number; r: number },
+  tgId: string, hex: { q: number, r: number },
   isActive = true
 ): ContactRecord {
   return {
@@ -69,7 +69,7 @@ function makeContact(
     contactType: 'confirmed',
     isActive,
     confirmedTaskGroupId: tgId,
-    sightingIds: [],
+    sightingIds: []
   }
 }
 
@@ -99,7 +99,6 @@ function findDiveBomber(side: 'allied' | 'japanese') {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('Sprint 22 — Dynamic Strike Targeting', () => {
-
   // ── 1. Target moves mid-flight — targetHex chases TG ─────────────────────
   it('targetHex updates each step to chase the target TG when an active contact exists', () => {
     const state = buildBaseState()
@@ -258,7 +257,7 @@ describe('Sprint 22 — Dynamic Strike Targeting', () => {
     expect(plan.launchHex).toEqual({ q: 40, r: 50 })
 
     const distAfterStep2 = Math.abs((plan.currentHex?.q ?? 40) - 40)
-    expect(distAfterStep2).toBeGreaterThan(0)  // moved away from launch hex
+    expect(distAfterStep2).toBeGreaterThan(0) // moved away from launch hex
 
     const hexAfterStep2 = { ...plan.currentHex! }
     steps(engine, 1)

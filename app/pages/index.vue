@@ -1,6 +1,5 @@
 <template>
   <div class="w-screen h-screen overflow-hidden">
-
     <!-- Scenario selection — full screen, layout unchanged -->
     <template v-if="gameStore.phase === 'menu'">
       <MenusScenarioSelectScreen />
@@ -9,14 +8,12 @@
     <!-- Game shell — top bar + left nav + canvas + right events panel -->
     <template v-else>
       <div class="flex flex-col h-full bg-slate-950">
-
         <ShellTopStatusBar
           :nav-expanded="navExpanded"
           @toggle-nav="navExpanded = !navExpanded"
         />
 
         <div class="flex flex-1 overflow-hidden">
-
           <ShellNavSidebar :expanded="navExpanded" />
 
           <!-- Canvas area — GameHUD floats over this -->
@@ -30,7 +27,6 @@
             @toggle="eventsOpen = !eventsOpen"
             @view-strike="openStrikeDetail"
           />
-
         </div>
       </div>
 
@@ -40,7 +36,6 @@
         :flight-plan-id="selectedStrikePlanId"
       />
     </template>
-
   </div>
 </template>
 

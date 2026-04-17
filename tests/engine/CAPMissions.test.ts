@@ -1,18 +1,19 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { GameEngine, createEmptyState } from '@game/engine/GameEngine'
 import type { MutableGameState } from '@game/engine/GameEngine'
-import type { TaskGroup, Ship, Squadron, GameTime, AircraftType, ShipClass } from '@game/types'
+import type { TaskGroup, Ship, Squadron, GameTime, ShipClass } from '@game/types'
 import { AIRCRAFT_TYPES } from '@game/data/aircraftTypes'
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
-const T0: GameTime = { day: 1, hour: 6,  minute: 0 }
+const T0: GameTime = { day: 1, hour: 6, minute: 0 }
 const T1: GameTime = { day: 1, hour: 23, minute: 59 }
 
 function makeShipClass(id: number, type: string): ShipClass {
   return {
     id,
     name: type,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     type: type as any,
     displacementTons: 20000,
     maxSpeed: 30,
@@ -39,7 +40,7 @@ function makeShip(id: string, classId: number, tgId: string, side: 'allied' | 'j
   }
 }
 
-function makeTG(id: string, side: 'allied' | 'japanese', pos: { q: number; r: number }): TaskGroup {
+function makeTG(id: string, side: 'allied' | 'japanese', pos: { q: number, r: number }): TaskGroup {
   return {
     id,
     name: id,
@@ -100,7 +101,7 @@ function buildState(): MutableGameState {
 }
 
 function oneStep(engine: GameEngine): void {
-  const STEP_MS = 30 * 130   // 3 900 ms per step at 1×
+  const STEP_MS = 30 * 130 // 3 900 ms per step at 1×
   engine.setTimeScale(1)
   engine.resume()
   engine.tick(STEP_MS)
@@ -188,7 +189,7 @@ describe('CAP Missions — Sprint 18', () => {
     const engine = new GameEngine(state, T0, T1, 1)
 
     const detected: { flightPlanId: string }[] = []
-    engine.events.on('EnemyStrikeDetected', (e) => detected.push(e))
+    engine.events.on('EnemyStrikeDetected', e => detected.push(e))
 
     engine.issueOrder({
       type: 'launch-strike',

@@ -1,12 +1,11 @@
-import type { GameTime, Side, ContactRecord, ContactType, SightingReport } from '../types'
-import type { TaskGroup } from '../types'
+import type { GameTime, Side, ContactRecord, SightingReport, TaskGroup } from '../types'
 import { gameTimeToMinutes } from '../types'
 import { coordKey } from '../utils/hexMath'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
 /** A contact with no resighting in this many minutes becomes inactive. */
-const CONTACT_DECAY_MINUTES = 240  // 4 hours = 8 steps
+const CONTACT_DECAY_MINUTES = 240 // 4 hours = 8 steps
 
 // ── FogOfWarSystem ─────────────────────────────────────────────────────────
 
@@ -56,7 +55,7 @@ export class FogOfWarSystem {
   ): boolean {
     const tg = taskGroups.get(taskGroupId)
     if (!tg) return false
-    if (tg.side === forSide) return true  // always see your own forces
+    if (tg.side === forSide) return true // always see your own forces
 
     const contacts = forSide === 'allied' ? alliedContacts : japaneseContacts
     const tgKey = coordKey(tg.position)
@@ -165,7 +164,7 @@ export class FogOfWarSystem {
   private refreshConfirmedContacts(
     contacts: Map<string, ContactRecord>,
     taskGroups: ReadonlyMap<string, TaskGroup>,
-    currentTime: GameTime
+    _currentTime: GameTime
   ): void {
     // If a confirmed contact's TG is in the same hex, keep it fresh
     // (simulates persistent tracking once a TG is confirmed)

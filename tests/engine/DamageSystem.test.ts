@@ -124,7 +124,7 @@ describe('DamageSystem.processStep', () => {
     const ds = makeDS(999)
     const ship = makeShip('s1')
     ship.fires = 2
-    ship.damageControlEfficiency = 0  // DC completely degraded — fires won't be put out
+    ship.damageControlEfficiency = 0 // DC completely degraded — fires won't be put out
 
     const ships = new Map([['s1', ship]])
     ds.processStep(ships)
@@ -149,7 +149,7 @@ describe('DamageSystem.processStep', () => {
     const ds = makeDS(1)
     const ship = makeShip('s1')
     ship.hullDamage = 98
-    ship.fires = 10  // enough fire damage to push over 100
+    ship.fires = 10 // enough fire damage to push over 100
 
     const ships = new Map([['s1', ship]])
     const sunk = ds.processStep(ships)

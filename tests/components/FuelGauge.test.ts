@@ -51,14 +51,13 @@ function makeSnapshot(alliedFuelPool: number, japaneseFuelPool: number): GameSna
     sightingReports: [],
     movementPaths: new Map(),
     alliedFuelPool,
-    japaneseFuelPool,
+    japaneseFuelPool
   }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('Sprint 23 — Fuel Gauge HUD', () => {
-
   // ── 1. Gauge initialises at 100% ────────────────────────────────────────
   it('alliedFuelPct and japaneseFuelPct are 100 immediately after initFuelPools', () => {
     const store = useForcesStore()
@@ -120,5 +119,4 @@ describe('Sprint 23 — Fuel Gauge HUD', () => {
     expect(barColor(store.alliedFuelPct, 'allied')).toBe('bg-slate-600')
     expect(barColor(store.japaneseFuelPct, 'japanese')).toBe('bg-slate-600')
   })
-
 })

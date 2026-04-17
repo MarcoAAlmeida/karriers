@@ -12,7 +12,7 @@ export const useGameStore = defineStore('game', () => {
   const currentTime = ref<GameTime>({ day: 1, hour: 6, minute: 0 })
   const timeScale = ref<TimeScale>(1)
   const isPaused = ref(true)
-  const stepFraction = ref(0)   // 0–1 for rendering interpolation
+  const stepFraction = ref(0) // 0–1 for rendering interpolation
   const scenarioWinner = ref<'allied' | 'japanese' | 'draw' | null>(null)
   const alliedPoints = ref(0)
   const japanesePoints = ref(0)
@@ -56,7 +56,7 @@ export const useGameStore = defineStore('game', () => {
     // The game store only tracks time and phase.
   }
 
-  function onScenarioEnded({ winner, time, alliedPoints: ap, japanesePoints: jp }: { winner: 'allied' | 'japanese' | 'draw'; time: GameTime; alliedPoints: number; japanesePoints: number }): void {
+  function onScenarioEnded({ winner, time, alliedPoints: ap, japanesePoints: jp }: { winner: 'allied' | 'japanese' | 'draw', time: GameTime, alliedPoints: number, japanesePoints: number }): void {
     currentTime.value = { ...time }
     phase.value = 'ended'
     isPaused.value = true

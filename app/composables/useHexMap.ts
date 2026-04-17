@@ -25,7 +25,7 @@ export function useHexMap(hexSize = DEFAULT_HEX_SIZE) {
     _initialised = true
   }
 
-  function hexToPixel(coord: HexCoord): { x: number; y: number } {
+  function hexToPixel(coord: HexCoord): { x: number, y: number } {
     return _hexToPixel(coord)
   }
 
@@ -33,12 +33,12 @@ export function useHexMap(hexSize = DEFAULT_HEX_SIZE) {
     return _pixelToHex(x, y)
   }
 
-  function hexCornerPoints(coord: HexCoord): { x: number; y: number }[] {
+  function hexCornerPoints(coord: HexCoord): { x: number, y: number }[] {
     return _hexCorners(coord)
   }
 
   /** Total canvas size in pixels that fits the entire grid. */
-  function gridPixelSize(): { width: number; height: number } {
+  function gridPixelSize(): { width: number, height: number } {
     const size = getHexSize()
     // flat-top hex: col width = size * 1.5 per hex (except last), row height = size * sqrt(3)
     const w = size * 1.5 * (GRID_WIDTH - 1) + size * 2

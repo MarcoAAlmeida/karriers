@@ -17,7 +17,7 @@ import type {
   ShipClass,
   VictoryCondition
 } from '../types'
-import { gameTimeToMinutes } from '../types'
+import { gameTimeToMinutes, minutesToGameTime } from '../types'
 import type { TerrainMap } from '../utils/pathfinding'
 import { hexDistance } from '../utils/hexMath'
 import type { TimeScale } from './TimeSystem'
@@ -34,6 +34,10 @@ import { VictorySystem } from './VictorySystem'
 import { TypedEventEmitter } from './EventEmitter'
 import { createRng } from '../utils/dice'
 import type { Rng } from '../utils/dice'
+import type { ScenarioParams } from '../types/scenario'
+import { DEFAULT_SCENARIO_PARAMS } from '../types/scenario'
+
+export type { ScenarioParams }
 
 // ── Engine state types ─────────────────────────────────────────────────────
 
@@ -75,8 +79,34 @@ export interface GameSnapshot {
   gameEvents: GameEvent[]
   sightingReports: import('../types').SightingReport[]
   /** Planned movement path for each task group (for route line rendering). */
-  movementPaths: ReadonlyMap<string, readonly { q: number; r: number }[]>
+  movementPaths: ReadonlyMap<string, readonly { q: number, r: number }[]>
   /** Current aviation fuel pools — for HUD fuel gauges. */
+  alliedFuelPool: number
+  japaneseFuelPool: number
+}
+
+/**
+ * FOW-filtered observation for one side.
+ * Passed to AI agents and logged to D1 — enemy task groups are never exposed
+ * directly; only ContactRecords from active scouts are included.
+ */
+export interface SidedSnapshot {
+  side: Side
+  time: GameTime
+  stepFraction: number
+  /** Own task groups — full ground truth, always visible. */
+  ownTaskGroups: ReadonlyMap<string, TaskGroup>
+  /** Own ships. */
+  ownShips: ReadonlyMap<string, Ship>
+  /** Own squadrons. */
+  ownSquadrons: ReadonlyMap<string, Squadron>
+  /** Own flight plans. */
+  ownFlightPlans: ReadonlyMap<string, FlightPlan>
+  /** Enemy contacts visible to this side (FOW-filtered). */
+  enemyContacts: ReadonlyMap<string, ContactRecord>
+  combatEvents: CombatEvent[]
+  gameEvents: GameEvent[]
+  sightingReports: import('../types').SightingReport[]
   alliedFuelPool: number
   japaneseFuelPool: number
 }
@@ -94,29 +124,26 @@ export interface EngineEvents {
   StepComplete: GameSnapshot
   SightingDetected: import('../types').SightingReport
   ShipDamaged: CombatEvent
-  ShipSunk: { shipId: string; taskGroupId: string; side: Side; time: GameTime }
-  StrikeInbound: { flightPlanId: string; targetTaskGroupId: string; time: GameTime }
+  ShipSunk: { shipId: string, taskGroupId: string, side: Side, time: GameTime }
+  StrikeInbound: { flightPlanId: string, targetTaskGroupId: string, time: GameTime }
   /** Fires when a Japanese strike is launched — Allied player should be warned. */
-  EnemyStrikeDetected: { flightPlanId: string; targetHex: HexCoord; estimatedArrivalTime: GameTime }
+  EnemyStrikeDetected: { flightPlanId: string, targetHex: HexCoord, estimatedArrivalTime: GameTime }
   /** Fires when a scout mission resolves at its target hex. */
-  ScoutContactRevealed: { flightPlanId: string; targetHex: HexCoord; contactFound: boolean; side: Side; time: GameTime }
-  ScenarioEnded: { winner: Side | 'draw'; time: GameTime; alliedPoints: number; japanesePoints: number }
+  ScoutContactRevealed: { flightPlanId: string, targetHex: HexCoord, contactFound: boolean, side: Side, time: GameTime }
+  ScenarioEnded: { winner: Side | 'draw', time: GameTime, alliedPoints: number, japanesePoints: number }
 }
 
 // ── Order payloads ─────────────────────────────────────────────────────────
 
-export type OrderPayload =
-  | { type: 'set-order'; taskGroupId: string; order: TaskGroupOrder; destination?: { q: number; r: number } }
-  | { type: 'set-speed'; taskGroupId: string; speedKnots: number }
-  | { type: 'set-destination'; taskGroupId: string; destination: { q: number; r: number } }
-  | { type: 'launch-strike'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number }; oneWay?: boolean }
-  | { type: 'launch-cap'; taskGroupId: string; squadronIds: string[] }
-  | { type: 'launch-search'; taskGroupId: string; squadronIds: string[]; searchSector: number }
-  | { type: 'launch-scout'; taskGroupId: string; squadronIds: string[]; targetHex: { q: number; r: number } }
-  | { type: 'recall-mission'; flightPlanId: string }
-
-/** Ship fuel (% of fuelLevel) consumed per 30-min step at full speed. */
-const SHIP_FUEL_PER_STEP_FULL = 0.5
+export type OrderPayload
+  = | { type: 'set-order', taskGroupId: string, order: TaskGroupOrder, destination?: { q: number, r: number } }
+    | { type: 'set-speed', taskGroupId: string, speedKnots: number }
+    | { type: 'set-destination', taskGroupId: string, destination: { q: number, r: number } }
+    | { type: 'launch-strike', taskGroupId: string, squadronIds: string[], targetHex: { q: number, r: number }, oneWay?: boolean }
+    | { type: 'launch-cap', taskGroupId: string, squadronIds: string[] }
+    | { type: 'launch-search', taskGroupId: string, squadronIds: string[], searchSector: number }
+    | { type: 'launch-scout', taskGroupId: string, squadronIds: string[], targetHex: { q: number, r: number } }
+    | { type: 'recall-mission', flightPlanId: string }
 
 // ── GameEngine ─────────────────────────────────────────────────────────────
 
@@ -134,6 +161,7 @@ export class GameEngine {
   private surfaceCombatSystem: SurfaceCombatSystem
   private victorySystem: VictorySystem
   private rng: Rng
+  private params: ScenarioParams
   /** Sighting reports from the latest step — included in snapshot. */
   private lastStepSightings: import('../types').SightingReport[] = []
   /** Set once scenario ends to prevent repeated ScenarioEnded events. */
@@ -143,17 +171,27 @@ export class GameEngine {
     initialState: MutableGameState,
     startTime: GameTime,
     endTime: GameTime,
-    seed = Date.now()
+    params: Partial<ScenarioParams> = {}
   ) {
-    this.state = initialState
+    this.params = { ...DEFAULT_SCENARIO_PARAMS, ...params }
+
+    // Seed: explicit > 0 wins; 0 or absent → Date.now()
+    const seed = this.params.seed > 0 ? this.params.seed : Date.now()
     this.rng = createRng(seed)
-    this.timeSystem = new TimeSystem(startTime, endTime)
+
+    // durationSteps override: recompute endTime from startTime if provided
+    const effectiveEndTime = this.params.durationSteps > 0
+      ? minutesToGameTime(gameTimeToMinutes(startTime) + this.params.durationSteps * 30)
+      : endTime
+
+    this.state = initialState
+    this.timeSystem = new TimeSystem(startTime, effectiveEndTime)
     this.movementSystem = new MovementSystem(buildTerrainMap(initialState.hexCells))
-    this.searchSystem = new SearchSystem(this.rng, initialState.aircraftTypes)
+    this.searchSystem = new SearchSystem(this.rng, initialState.aircraftTypes, this.params)
     this.fogOfWarSystem = new FogOfWarSystem()
-    this.damageSystem = new DamageSystem(this.rng, initialState.shipClasses)
-    this.airOpsSystem = new AirOpsSystem(initialState.aircraftTypes, initialState.shipClasses)
-    this.combatSystem = new CombatSystem(this.rng, initialState.aircraftTypes, initialState.shipClasses, this.airOpsSystem)
+    this.damageSystem = new DamageSystem(this.rng, initialState.shipClasses, this.params)
+    this.airOpsSystem = new AirOpsSystem(initialState.aircraftTypes, initialState.shipClasses, this.params)
+    this.combatSystem = new CombatSystem(this.rng, initialState.aircraftTypes, initialState.shipClasses, this.airOpsSystem, this.params)
     this.surfaceCombatSystem = new SurfaceCombatSystem(this.rng, initialState.shipClasses, this.damageSystem)
     this.victorySystem = new VictorySystem(initialState.shipClasses)
   }
@@ -161,6 +199,7 @@ export class GameEngine {
   // ── Controls ──────────────────────────────────────────────────────────────
 
   get isPaused(): boolean { return this.timeSystem.isPaused }
+  get scenarioParams(): ScenarioParams { return this.params }
   get currentTime(): GameTime { return this.timeSystem.currentTime }
   get timeScale(): TimeScale { return this.timeSystem.timeScale }
   get stepFraction(): number { return this.timeSystem.stepFraction }
@@ -198,7 +237,7 @@ export class GameEngine {
           mission: 'strike',
           targetHex: payload.targetHex,
           oneWay: payload.oneWay,
-          targetTaskGroupId: this.resolveTargetTG(payload.targetHex, payload.taskGroupId),
+          targetTaskGroupId: this.resolveTargetTG(payload.targetHex, payload.taskGroupId)
         }
         this.airOpsSystem.queueLaunch(order)
         break
@@ -303,7 +342,7 @@ export class GameEngine {
         const sc = this.state.shipClasses.get(ship.classId)
         const maxSpeed = sc?.maxSpeed ?? tg.speed
         const fraction = maxSpeed > 0 ? tg.speed / maxSpeed : 0
-        ship.fuelLevel = Math.max(0, (ship.fuelLevel ?? 100) - SHIP_FUEL_PER_STEP_FULL * fraction)
+        ship.fuelLevel = Math.max(0, (ship.fuelLevel ?? 100) - this.params.shipFuelPerStepFull * fraction)
       }
       // Sync TG fuelState as average of non-sunk ship fuel levels
       const liveShips = tg.shipIds
@@ -333,7 +372,7 @@ export class GameEngine {
     )
 
     // 4. Air operations — process recoveries and queued launches
-    const taskGroupPositions = new Map<string, { q: number; r: number }>()
+    const taskGroupPositions = new Map<string, { q: number, r: number }>()
     for (const tg of this.state.taskGroups.values()) {
       taskGroupPositions.set(tg.id, tg.position)
     }
@@ -498,18 +537,28 @@ export class GameEngine {
       }
     }
 
-    // 9. Fuel exhaustion — both sides at zero (and finite) → scenario ends in a draw
-    if (!this.scenarioEnded &&
-        isFinite(this.state.alliedFuelPool) && this.state.alliedFuelPool <= 0 &&
-        isFinite(this.state.japaneseFuelPool) && this.state.japaneseFuelPool <= 0) {
-      this.scenarioEnded = true
-      this.timeSystem.pause()
-      this.events.emit('ScenarioEnded', {
-        winner: 'draw',
-        time: currentTime,
-        alliedPoints: 0,
-        japanesePoints: 0
-      })
+    // 9. Fuel exhaustion — a grounded fleet cannot fight; opponent wins
+    if (!this.scenarioEnded) {
+      const alliedGrounded = isFinite(this.state.alliedFuelPool) && this.state.alliedFuelPool <= 0
+      const japaneseGrounded = isFinite(this.state.japaneseFuelPool) && this.state.japaneseFuelPool <= 0
+      if (alliedGrounded || japaneseGrounded) {
+        this.scenarioEnded = true
+        this.timeSystem.pause()
+        let winner: 'allied' | 'japanese' | 'draw'
+        if (alliedGrounded && japaneseGrounded) {
+          winner = 'draw'
+        } else if (alliedGrounded) {
+          winner = 'japanese'
+        } else {
+          winner = 'allied'
+        }
+        this.events.emit('ScenarioEnded', {
+          winner,
+          time: currentTime,
+          alliedPoints: 0,
+          japanesePoints: 0
+        })
+      }
     }
   }
 
@@ -526,7 +575,7 @@ export class GameEngine {
     const enemySide: Side = launchingTG.side === 'allied' ? 'japanese' : 'allied'
 
     let bestId: string | undefined
-    let bestDist = 3  // max hex radius to match
+    let bestDist = 3 // max hex radius to match
 
     for (const tg of this.state.taskGroups.values()) {
       if (tg.side !== enemySide) continue
@@ -545,8 +594,51 @@ export class GameEngine {
     return this.buildSnapshot()
   }
 
+  /** Returns a FOW-filtered observation for the given side. */
+  getObservation(side: Side): SidedSnapshot {
+    const snap = this.buildSnapshot()
+
+    const ownTaskGroups = new Map<string, TaskGroup>()
+    const ownShips = new Map<string, Ship>()
+    const ownSquadrons = new Map<string, Squadron>()
+    const ownFlightPlans = new Map<string, FlightPlan>()
+
+    for (const [id, tg] of snap.taskGroups) {
+      if (tg.side === side) ownTaskGroups.set(id, tg)
+    }
+    for (const [id, ship] of snap.ships) {
+      if (ship.side === side) ownShips.set(id, ship)
+    }
+    for (const [id, sq] of snap.squadrons) {
+      if (sq.side === side) ownSquadrons.set(id, sq)
+    }
+    for (const [id, fp] of snap.flightPlans) {
+      if (fp.side === side) ownFlightPlans.set(id, fp)
+    }
+
+    const enemyContacts = side === 'allied'
+      ? new Map(snap.alliedContacts)
+      : new Map(snap.japaneseContacts)
+
+    return {
+      side,
+      time: snap.time,
+      stepFraction: snap.stepFraction,
+      ownTaskGroups,
+      ownShips,
+      ownSquadrons,
+      ownFlightPlans,
+      enemyContacts,
+      combatEvents: snap.combatEvents,
+      gameEvents: snap.gameEvents,
+      sightingReports: snap.sightingReports,
+      alliedFuelPool: snap.alliedFuelPool,
+      japaneseFuelPool: snap.japaneseFuelPool
+    }
+  }
+
   private buildSnapshot(): GameSnapshot {
-    const movementPaths = new Map<string, readonly { q: number; r: number }[]>()
+    const movementPaths = new Map<string, readonly { q: number, r: number }[]>()
     for (const tg of this.state.taskGroups.values()) {
       const path = this.movementSystem.getPath(tg.id)
       if (path.length > 0) movementPaths.set(tg.id, path)
@@ -616,7 +708,7 @@ export class GameEngine {
   private resolveScoutMission(
     plan: FlightPlan,
     currentTime: GameTime
-  ): { event: CombatEvent; contactFound: boolean; contact?: ContactRecord } {
+  ): { event: CombatEvent, contactFound: boolean, contact?: ContactRecord } {
     const targetHex = plan.targetHex ?? { q: 0, r: 0 }
     const enemySide: Side = plan.side === 'allied' ? 'japanese' : 'allied'
     const SCOUT_RADIUS_HEXES = 3

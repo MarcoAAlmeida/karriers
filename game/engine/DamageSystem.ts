@@ -1,15 +1,11 @@
 import type { Ship, Squadron, HitResult, ShipClass } from '../types'
 import type { Rng } from '../utils/dice'
 import { chance } from '../utils/dice'
+import type { ScenarioParams } from '../types/scenario'
+import { DEFAULT_SCENARIO_PARAMS } from '../types/scenario'
 
-// ── Constants ──────────────────────────────────────────────────────────────
+// ── Constants (non-tuneable) ───────────────────────────────────────────────
 
-/** Hull damage dealt per active fire per step. */
-const FIRE_DAMAGE_PER_STEP = 4
-/** Probability a fire spreads to an adjacent compartment each step. */
-const FIRE_SPREAD_CHANCE = 0.22
-/** Flooding converts to hull damage at this rate per step. */
-const FLOOD_DAMAGE_RATE = 0.08
 /** Hull damage threshold for each status tier. */
 const DAMAGE_THRESHOLDS = { damaged: 25, onFire: 50, sinking: 75 }
 
@@ -18,10 +14,12 @@ const DAMAGE_THRESHOLDS = { damaged: 25, onFire: 50, sinking: 75 }
 export class DamageSystem {
   private rng: Rng
   private shipClasses: Map<number, ShipClass>
+  private params: ScenarioParams
 
-  constructor(rng: Rng, shipClasses: Map<number, ShipClass>) {
+  constructor(rng: Rng, shipClasses: Map<number, ShipClass>, params: ScenarioParams = DEFAULT_SCENARIO_PARAMS) {
     this.rng = rng
     this.shipClasses = shipClasses
+    this.params = params
   }
 
   // ── Apply a single hit ────────────────────────────────────────────────────
@@ -95,7 +93,7 @@ export class DamageSystem {
     // 1. Fire spread
     if (ship.fires > 0) {
       for (let i = 0; i < ship.fires; i++) {
-        if (chance(this.rng, FIRE_SPREAD_CHANCE)) ship.fires++
+        if (chance(this.rng, this.params.fireSpreadChance)) ship.fires++
       }
       // Cap fires at a maximum based on ship size
       const maxFires = this.maxFiresFor(ship)
@@ -114,12 +112,12 @@ export class DamageSystem {
 
     // 3. Fire damage to hull
     if (ship.fires > 0) {
-      ship.hullDamage = Math.min(100, ship.hullDamage + ship.fires * FIRE_DAMAGE_PER_STEP)
+      ship.hullDamage = Math.min(100, ship.hullDamage + ship.fires * this.params.fireDamagePerStep)
     }
 
     // 4. Flooding
     if (ship.floodingRisk > 0) {
-      const floodDamage = ship.floodingRisk * FLOOD_DAMAGE_RATE
+      const floodDamage = ship.floodingRisk * this.params.floodDamageRate
       ship.hullDamage = Math.min(100, ship.hullDamage + floodDamage)
       // Flooding risk slowly decreases as damage control counters it
       ship.floodingRisk = Math.max(0, ship.floodingRisk - (ship.damageControlEfficiency / 100) * 8)

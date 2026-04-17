@@ -5,7 +5,7 @@
  * over-capacity penalties, aircraft attrition disbandment, and one-way strikes.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { GameEngine, createEmptyState } from '@game/engine/GameEngine'
 import type { MutableGameState } from '@game/engine/GameEngine'
 import type { TaskGroup, Ship, Squadron, ShipClass, GameTime, AircraftType } from '@game/types'
@@ -13,10 +13,10 @@ import { AIRCRAFT_TYPES } from '@game/data/aircraftTypes'
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
-const T0: GameTime = { day: 1, hour: 6,  minute: 0 }
+const T0: GameTime = { day: 1, hour: 6, minute: 0 }
 const T_END: GameTime = { day: 2, hour: 6, minute: 0 }
 
-const STEP_MS = 30 * 130  // 1 engine step at speed-1
+const STEP_MS = 30 * 130 // 1 engine step at speed-1
 
 function makeCVClass(id: number): ShipClass {
   return {
@@ -70,7 +70,7 @@ function makeShip(id: string, classId: number, tgId: string, side: 'allied' | 'j
 function makeTG(
   id: string,
   side: 'allied' | 'japanese',
-  pos: { q: number; r: number },
+  pos: { q: number, r: number },
   shipIds: string[] = []
 ): TaskGroup {
   return {
@@ -312,7 +312,7 @@ describe('Sprint 19 — Damage Consequences', () => {
     })
 
     const engine = new GameEngine(state, T0, T_END, 1)
-    steps(engine, 1)  // processRecoveries: no alternate → ditch
+    steps(engine, 1) // processRecoveries: no alternate → ditch
 
     const finalSq = state.squadrons.get('vf-6')!
     expect(finalSq.deckStatus).toBe('destroyed')
@@ -366,7 +366,7 @@ describe('Sprint 19 — Damage Consequences', () => {
       mission: 'cap',
       side: 'allied',
       launchTime: pastTime,
-      returnEta: pastTime,  // already past T0
+      returnEta: pastTime, // already past T0
       status: 'returning',
       aircraftLost: 0
     })

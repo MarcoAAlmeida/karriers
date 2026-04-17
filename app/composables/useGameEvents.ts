@@ -44,20 +44,22 @@ export function useGameEvents() {
         description: `Enemy aircraft inbound to ${tgName} — ETA ${hh}:${mm}`,
         color: 'error',
         duration: 10_000,
-        actions: nearest && openCAPCallback ? [
-          {
-            label: 'Launch CAP',
-            color: 'neutral' as const,
-            variant: 'outline' as const,
-            onClick: () => openCAPCallback!(nearest.id)
-          }
-        ] : []
+        actions: nearest && openCAPCallback
+          ? [
+              {
+                label: 'Launch CAP',
+                color: 'neutral' as const,
+                variant: 'outline' as const,
+                onClick: () => openCAPCallback!(nearest.id)
+              }
+            ]
+          : []
       })
     })
 
     // Sprint 20: notify when scout confirms a contact
     engine.events.on('ScoutContactRevealed', ({ contactFound, targetHex, side, time }) => {
-      if (side !== 'allied') return  // only show Allied scout results to player
+      if (side !== 'allied') return // only show Allied scout results to player
       const hh = String(time.hour).padStart(2, '0')
       const mm = String(time.minute).padStart(2, '0')
       if (contactFound) {

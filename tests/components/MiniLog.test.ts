@@ -18,7 +18,7 @@ interface LogEntry {
   className: string
 }
 
-function formatTime(t: { day: number; hour: number; minute: number }): string {
+function formatTime(t: { day: number, hour: number, minute: number }): string {
   return `D${t.day} ${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`
 }
 

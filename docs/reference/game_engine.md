@@ -7,6 +7,83 @@ Software-development view of the simulation engine (`game/`). No Vue/Nuxt concep
 
 ---
 
+## 0. ScenarioParams
+
+**Files:** `game/types/scenario.ts`, `game/utils/scenarioState.ts`
+
+All tuneable engine constants live in a flat, serialisable `ScenarioParams` object. This is the genome for the evolutionary trainer (Sprint 27). Pass any subset to `GameEngine` (and to `buildStateFromScenario`) to override defaults.
+
+```typescript
+import { GameEngine } from './game/engine/GameEngine'
+import { buildStateFromScenario } from './game/utils/scenarioState'
+import { MIDWAY } from './game/data/scenarios/midway'
+
+const state = buildStateFromScenario(MIDWAY, { seed: 42, spawnMode: 'seeded' })
+const engine = new GameEngine(state, MIDWAY.startTime, MIDWAY.endTime, {
+  seed: 42,
+  bombDamageMultiplier: 1.5,
+  capEffectivenessMultiplier: 0.7,
+  durationSteps: 96,
+})
+```
+
+### ScenarioParams fields
+
+| Field | Default | Category |
+|---|---|---|
+| `seed` | 0 | RNG — 0 = use `Date.now()` |
+| `spawnMode` | `'fixed'` | Spawn — `'fixed'` / `'seeded'` / `'random'` |
+| `durationSteps` | 0 | Duration — 0 = use scenario `endTime` |
+| `shipFuelPerStepFull` | 0.5 | Ship fuel — % per step at full speed |
+| `strikeFuelRate` | 2 | Aviation fuel — units/aircraft/hex |
+| `capFuelRate` | 2 | Aviation fuel — units/aircraft/hex |
+| `scoutFuelRate` | 1 | Aviation fuel — units/aircraft/hex |
+| `searchFuelRate` | 1 | Aviation fuel — units/aircraft/hex |
+| `escortFuelRate` | 1 | Aviation fuel — units/aircraft/hex |
+| `aswFuelRate` | 1 | Aviation fuel — units/aircraft/hex |
+| `fuelReserve` | 0.15 | Aviation fuel — minimum reserve fraction |
+| `capOrbitRangeHexes` | 5 | CAP — fuel cost proxy distance |
+| `capOrbitMinutes` | 90 | CAP — orbit duration before auto-return |
+| `overcapHardLimit` | 1.2 | Deck — occupancy fraction above which aircraft ditch |
+| `overcapPenaltyMinutes` | 60 | Deck — extra readyTime on over-capacity recovery |
+| `capRearmMinutes` | 30 | Rearm — cap/intercept |
+| `strikeRearmMinutes` | 60 | Rearm — strike/escort |
+| `scoutRearmMinutes` | 30 | Rearm — scout/search/asw |
+| `strikeRearmPenaltyMinutes` | 60 | Rearm — extra delay when carrier takes a hit |
+| `bombDamageMultiplier` | 1.0 | Damage — dive/level bomb hull damage |
+| `torpedoDamageMultiplier` | 1.0 | Damage — torpedo hull damage |
+| `fireDamageMultiplier` | 1.0 | Damage — fires started on hit |
+| `floodingMultiplier` | 1.0 | Damage — flooding risk on torpedo hit |
+| `capEffectivenessMultiplier` | 1.0 | Combat — CAP shots per defender |
+| `fireDamagePerStep` | 4 | Damage — hull HP lost per active fire per step |
+| `fireSpreadChance` | 0.22 | Damage — probability a fire spreads each step |
+| `floodDamageRate` | 0.08 | Damage — hull % lost per flooding risk per step |
+| `detectionRangeMultiplier` | 1.0 | Search — effective detection range scalar |
+
+### Spawn modes
+
+| Mode | Behaviour |
+|---|---|
+| `'fixed'` | TG positions taken directly from the scenario definition |
+| `'seeded'` | Deterministic ±10-hex random offset per TG using `params.seed` |
+| `'random'` | Non-deterministic ±10-hex offset using `Date.now()` as seed |
+
+### buildStateFromScenario
+
+`buildStateFromScenario(scenario, params?)` in `game/utils/scenarioState.ts` is the single entry point for constructing `MutableGameState`. Both `useScenarioLoader` (browser) and `scripts/headless.ts` (Node.js CLI) call it, guaranteeing identical initial state.
+
+### Headless runner
+
+`scripts/headless.ts` runs a full game from the command line with no Vue or Nuxt:
+
+```bash
+pnpm headless                        # fixed seed 42, default params
+pnpm headless -- --seed 99           # reproducible run with seed 99
+pnpm headless -- --durationSteps 48  # cap at 48 steps (24 sim-hours)
+```
+
+---
+
 ## 1. Engine ↔ Vue Boundary
 
 - `GameEngine` is a plain TypeScript class stored as `shallowRef<GameEngine>` in `stores/game.ts`
@@ -88,7 +165,9 @@ clear(): void
 | `ShipDamaged` | `CombatEvent` | When a ship takes a hit during combat resolution |
 | `ShipSunk` | `{ shipId, taskGroupId, side, time }` | When a ship's status transitions to `'sunk'` |
 | `StrikeInbound` | `{ flightPlanId, targetTaskGroupId, time }` | When an airborne strike reaches its target ETA |
-| `ScenarioEnded` | `{ winner: Side \| 'draw', time }` | Once, when VictorySystem finds a decisive result; engine auto-pauses |
+| `EnemyStrikeDetected` | `{ flightPlanId, targetHex, estimatedArrivalTime }` | When a Japanese strike is launched — warns the Allied player |
+| `ScoutContactRevealed` | `{ flightPlanId, targetHex, contactFound, side, time }` | When a scout mission resolves at its target hex |
+| `ScenarioEnded` | `{ winner: Side \| 'draw', time, alliedPoints, japanesePoints }` | Once, when VictorySystem finds a decisive result; engine auto-pauses |
 
 `ScenarioEnded` is guarded by a `scenarioEnded` boolean so it fires exactly once even if `runStep()` is called multiple times in the same tick.
 
@@ -110,44 +189,57 @@ interface GameSnapshot {
   gameEvents:       GameEvent[]
   sightingReports:  SightingReport[]
   movementPaths:    ReadonlyMap<string, readonly HexCoord[]>
+  alliedFuelPool:   number     // current aviation fuel pool — for HUD gauges
+  japaneseFuelPool: number
 }
 ```
 
-### SidedSnapshot (Sprint 25+)
+### SidedSnapshot
 
-Fog-of-war-filtered view for a single side. Used by `AIAgent.decideTurn()` and logged to NuxtHub D1.
+Fog-of-war-filtered observation for a single side. Used by `AIAgent.decideTurn()` and logged to NuxtHub D1.
 AI agents and training pipelines must **never** receive `GameSnapshot` directly — only `SidedSnapshot`.
 
 ```typescript
 // engine.getObservation(side: Side): SidedSnapshot
 interface SidedSnapshot {
-  time: GameTime
-  ownTaskGroups:  ReadonlyMap<string, TaskGroup>   // own side, full state
-  enemyContacts:  ReadonlyMap<string, ContactRecord> // enemy — FOW-filtered only
-  squadrons:      ReadonlyMap<string, Squadron>
-  flightPlans:    ReadonlyMap<string, FlightPlan>
+  side:           Side
+  time:           GameTime
+  stepFraction:   number
+  ownTaskGroups:  ReadonlyMap<string, TaskGroup>     // own forces, full ground truth
+  ownShips:       ReadonlyMap<string, Ship>
+  ownSquadrons:   ReadonlyMap<string, Squadron>
+  ownFlightPlans: ReadonlyMap<string, FlightPlan>
+  enemyContacts:  ReadonlyMap<string, ContactRecord> // FOW-filtered: only what own scouts found
   combatEvents:   CombatEvent[]
   gameEvents:     GameEvent[]
-  // No taskGroups ground-truth — never expose enemy real positions
+  sightingReports: SightingReport[]
+  alliedFuelPool:  number
+  japaneseFuelPool: number
+  // No enemy taskGroups — real positions never exposed
 }
 ```
+
+`getObservation('allied')` filters `buildSnapshot()` by side: own maps include only same-side entities; `enemyContacts` is the `alliedContacts` map (what Allied scouts have found), not the Japanese `taskGroups` map.
 
 ---
 
 ## 4. Step Sequence
 
-`GameEngine.runStep()` executes these subsystems in order every 30 simulated minutes:
+`GameEngine.runStep()` executes these subsystems in order every 30 simulated minutes.
+`TimeSystem.tick()` advances `currentTime` before `runStep()` is called; it is not a step inside `runStep()`.
 
 ```
-1. TimeSystem           advance currentTime by 30 min
-2. MovementSystem       reposition all task groups
-3. SearchSystem         resolve sector searches → SightingReport[]
-4. AirOpsSystem         process deck cycles; process pending launches
-5. FogOfWarSystem       decay old contacts; integrate new sightings
-6. CombatSystem         resolve strikes whose ETA ≤ currentTime
-7. DamageSystem         fire spread, flooding, damage control per ship
-8. SurfaceCombatSystem  trigger if opposing TGs share a hex
-9. VictorySystem        evaluate all victory conditions
+1.   MovementSystem     reposition all task groups
+1b.  Ship fuel          decrement fuelLevel per ship proportional to speed; sync TG fuelState
+2.   SearchSystem       resolve sector searches → SightingReport[]
+3.   FogOfWarSystem     decay old contacts; integrate new sightings
+4.   AirOpsSystem       orbit expiry → position update → recoveries → spots → queued launches
+4b.  Scout arrivals     resolve scout missions that reached their target hex → ContactRecord
+5.   CombatSystem       resolve strikes whose ETA ≤ currentTime
+6.   DamageSystem       fire spread, flooding, damage control per ship
+7.   SurfaceCombatSystem trigger if opposing TGs share a hex
+8.   VictorySystem      evaluate all victory conditions
+9.   Fuel-exhaustion    grounded fleet check → opponent wins (or draw if both)
 ```
 
 After all steps in the tick complete, the engine builds a `GameSnapshot`, emits `StepComplete`, then emits individual `SightingDetected` events, and clears `pendingCombatEvents` / `pendingGameEvents`.
@@ -165,6 +257,7 @@ set-destination // set TG.destination; replans movement path
 launch-strike   // queue launch of squadronIds toward targetHex
 launch-cap      // queue CAP assignment for squadronIds
 launch-search   // queue search mission for squadronIds in searchSector
+launch-scout    // queue point-scout mission for squadronIds toward a specific targetHex
 recall-mission  // force a FlightPlan to begin returning
 ```
 
@@ -281,21 +374,65 @@ Manages the carrier deck cycle and flight plan lifecycle.
 hangared → spotted (SPOT_STEPS=1) → airborne → recovering (RECOVERY_STEPS=1) → rearming → hangared
 ```
 
-### Constants
+### Hardcoded constants
 | Constant | Value | Meaning |
 |---|---|---|
 | `SPOT_STEPS` | 1 | Steps to spot aircraft before launch |
 | `RECOVERY_STEPS` | 1 | Steps to recover after landing |
-| `FUEL_RESERVE` | 0.15 | Minimum fuel fraction; launches beyond range are rejected |
+
+### ScenarioParams-driven values (Sprint 24+)
+All other AirOps constants are now tuneable via `ScenarioParams` (see §0). Default values match the previously hardcoded originals.
+
+| ScenarioParams field | Default | Meaning |
+|---|---|---|
+| `fuelReserve` | 0.15 | Minimum fuel fraction; launches beyond range are rejected |
+| `capOrbitRangeHexes` | 5 | Virtual range (hexes) used to compute fuel cost for CAP (no fixed destination) |
+| `overcapHardLimit` | 1.2 | Deck occupancy fraction above which recovering aircraft ditch |
+| `overcapPenaltyMinutes` | 60 | Extra readyTime added when recovering to an over-capacity deck |
+| `strikeRearmPenaltyMinutes` | 60 | Extra readyTime added to recovering squadrons when their carrier takes a strike hit |
+| `capOrbitMinutes` | 90 | CAP orbit duration before auto-return |
+| `capRearmMinutes` | 30 | Rearm time for cap/intercept missions |
+| `strikeRearmMinutes` | 60 | Rearm time for strike/escort missions |
+| `scoutRearmMinutes` | 30 | Rearm time for scout/search/asw missions |
+| `capFuelRate` | 2 | Fuel units per aircraft per hex (cap/strike/intercept) |
+| `strikeFuelRate` | 2 | Fuel units per aircraft per hex (strike) |
+| `scoutFuelRate` | 1 | Fuel units per aircraft per hex (scout/search/escort/asw) |
+
+### Aviation fuel cost
+Each launch deducts `aircraftCount × hexesTravelled × fuelRate` from the side's fuel pool. CAP uses `capOrbitRangeHexes` as its distance proxy. Launches are rejected when `fuelPool ≤ 0`.
+
+### Per-mission rearm times
+After recovery, a squadron's `readyTime` is gated by the mission-specific rearm param. A strike hit on the carrier extends all recovering squadrons' `readyTime` by `strikeRearmPenaltyMinutes`.
+
+| Mission | ScenarioParams field | Default |
+|---|---|---|
+| cap, intercept | `capRearmMinutes` | 30 min |
+| strike, escort | `strikeRearmMinutes` | 60 min |
+| scout, search, asw | `scoutRearmMinutes` | 30 min |
+
+### processStep() sub-steps
+Each call to `processStep()` runs these stages in order:
+1. **Orbit expiry** — CAP and search plans with `eta ≤ currentTime` transition to `'returning'`
+2. **Live position update** — airborne plans chase their target TG (via active contact) and lerp `currentHex`; returning plans re-anchor `returnEta` to the carrier's current position
+3. **Recoveries** — plans whose `returnEta` has passed land squadrons and set `readyTime`
+4. **Spot advance** — spotted squadrons advance to `'airborne'`
+5. **Launch queue** — pending `LaunchOrder`s are executed; new `FlightPlan`s returned
 
 ### Launch queue
-Orders arrive via `queueLaunch(LaunchOrder)` (called by `GameEngine.issueOrder` for `launch-strike`, `launch-cap`, `launch-search`). Each step, `processStep()` attempts to process queued launches:
+Orders arrive via `queueLaunch(LaunchOrder)` (called by `GameEngine.issueOrder` for `launch-strike`, `launch-cap`, `launch-search`, `launch-scout`). Each step, `processStep()` attempts to process queued launches:
 - Computes ETA and returnETA from hex distance + aircraft speed
 - Creates a `FlightPlan` with status `'planned'` → `'airborne'` once squadrons are spotted
+- Stores `launchHex`, `currentHex`, `currentHexTime`, and `targetTaskGroupId` for live tracking
 - Squadrons with insufficient fuel for the round trip (plus reserve) are rejected
+
+### Scout missions
+Scout plans (`mission === 'scout'`) fly to a specific `targetHex`. When `eta` is reached, `processScoutArrivals()` transitions the plan to `'returning'` and `GameEngine` calls `resolveScoutMission()` to check for enemy TGs within 3 hexes of `targetHex`. A `ContactRecord` is created or updated in the owning side's contacts map, and a `ScoutContactRevealed` event is emitted.
 
 ### Recall
 `recallMission(flightPlanId, flightPlans, currentTime)` forces returning squadrons early; they arrive at `currentTime + travelTime` with reduced fuel.
+
+### Strike rearm penalty
+`applyStrikeRearmPenalty(carrierShipId, ...)` is called by `GameEngine` for every ship hit during a strike resolution. If the hit ship is a carrier, all `'recovering'` squadrons in that carrier's TG have their `readyTime` extended by `STRIKE_REARM_PENALTY_MINUTES`.
 
 ---
 
@@ -304,6 +441,9 @@ Orders arrive via `queueLaunch(LaunchOrder)` (called by `GameEngine.issueOrder` 
 **File:** `game/engine/CombatSystem.ts`
 
 Resolves air strikes whose `ETA ≤ currentTime`.
+
+### Target resolution
+At strike resolution time the engine first looks up the TG by `plan.targetTaskGroupId` (set at launch time via `resolveTargetTG`). This allows the strike to chase a moving target. If the TG has moved off the original launch hex the strike hits it at its current position. If no `targetTaskGroupId` is set (e.g. land targets), it falls back to a hex-based lookup. On resolution `plan.targetHex` is snapped to the TG's actual position so the return flight arc originates from the correct point.
 
 ### Strike resolution pipeline
 
@@ -386,6 +526,18 @@ Evaluated every step. Checks all `VictoryCondition[]` from the scenario.
 1. Sweep all conditions — first side to satisfy all its conditions wins immediately
 2. If `currentTime ≥ endTime`, winner is the side with higher accumulated points
 
+### Fuel-exhaustion victory (`GameEngine.runStep` step 9)
+
+Evaluated after the VictorySystem check, before emitting `StepComplete`. Only applies when fuel pools are finite (i.e. not `Infinity`).
+
+| Condition | Result |
+|---|---|
+| Allied fuel ≤ 0, Japanese fuel > 0 | Japanese wins (Allied fleet grounded) |
+| Japanese fuel ≤ 0, Allied fuel > 0 | Allied wins (Japanese fleet grounded) |
+| Both fuel ≤ 0 simultaneously | Draw |
+
+A grounded fleet cannot launch any further aircraft (`AirOpsSystem` rejects launches when `fuelPool ≤ 0`), so the side that still has fuel wins by default.
+
 ---
 
 ## 14. RNG
@@ -398,7 +550,8 @@ rollD100(rng): number            // 1–100
 chance(rng, pct): boolean        // true with probability pct/100
 ```
 
-The engine constructor accepts an optional `seed` parameter for deterministic replays.
+The engine seed is supplied via `ScenarioParams.seed`. When `seed > 0`, `GameEngine` uses it for deterministic replays; when `seed === 0` (default), it falls back to `Date.now()`. The same seed field is used by `buildStateFromScenario` for `spawnMode: 'seeded'` position offsets.
+
 Zero `Math.random()` calls exist anywhere in `game/` — all randomness flows through this RNG.
 
 ---
@@ -424,7 +577,79 @@ Needed for MapLibre sync:
 
 ---
 
-## 16. Key Data Relationships
+## 16. Feature Vector
+
+**File:** `game/utils/featureVector.ts`
+
+Converts a `SidedSnapshot` into a fixed-size `Float32Array` for ML use. The schema is **frozen** — changing it invalidates stored training data.
+
+```typescript
+import { toFeatureVector, FEATURE_VECTOR_SIZE } from '@game/utils/featureVector'
+
+const vec = toFeatureVector(engine.getObservation('allied'), 'allied')
+// vec.length === FEATURE_VECTOR_SIZE === 264
+```
+
+### Layout (264 floats total)
+
+| Segment | Slots | Features | Total | Contents |
+|---|---|---|---|---|
+| Own task groups | 4 | 8 | 32 | active, q, r, speed, fuelState, shipCount, order, carrier-proxy |
+| Enemy contacts | 8 | 6 | 48 | active, q, r, contactType, ageMinutes, estimatedCourse |
+| Own squadrons | 16 | 8 | 128 | present, aircraftCount, fuelLoad, deckStatus, missionType, experience, role, isAirborne |
+| Own flight plans | 8 | 6 | 48 | active, targetQ, targetR, mission, status, elapsed fraction |
+| Scalar globals | — | 8 | 8 | alliedFuelPct, japaneseFuelPct, ownFuelPct, enemyFuelPct, combatEventCount, sightingCount, planCount, reserved |
+
+All values are clamped to `[0, 1]`. Empty slots (fewer than max entities) are zero-padded. Sparse sequences are front-packed — the first present entity always occupies slot 0.
+
+---
+
+## 17. NuxtHub D1 Persistence
+
+**Files:** `server/database/schema.ts`, `server/utils/drizzle.ts`, `server/api/games/index.post.ts`, `server/plugins/database.ts`
+
+Every completed game is logged to a NuxtHub D1 (SQLite) database. Data is logged via the `useGameLogger` composable, which accumulates `SidedSnapshot`s per step and POSTs them to `/api/games` on `ScenarioEnded`.
+
+### Schema
+
+```
+games
+  id             TEXT PRIMARY KEY
+  scenario_id    TEXT
+  params_json    TEXT        -- serialised ScenarioParams
+  allied_agent   TEXT        -- 'human' | 'rule-based' | 'evolutionary' | …
+  japanese_agent TEXT
+  winner         TEXT        -- 'allied' | 'japanese' | 'draw'
+  duration_steps INTEGER
+  allied_points  INTEGER
+  japanese_points INTEGER
+  created_at     INTEGER     -- Unix ms
+
+steps
+  id                     INTEGER PRIMARY KEY AUTOINCREMENT
+  game_id                TEXT → games.id
+  step_number            INTEGER
+  allied_snapshot_json   TEXT   -- serialised SidedSnapshot (not ground truth)
+  japanese_snapshot_json TEXT
+```
+
+`snapshot_json` stores the per-side observations, never the raw `GameSnapshot` ground truth, so stored data matches what AI agents see.
+
+### Local dev
+
+`@nuxthub/core` emulates D1 with SQLite in-process. No Docker required. Tables are created via `server/plugins/database.ts` on Nitro startup using `CREATE TABLE IF NOT EXISTS`.
+
+Drizzle ORM is used for type-safe inserts via `server/utils/drizzle.ts`:
+
+```typescript
+export function useDrizzle() {
+  return drizzle(hubDatabase(), { schema })
+}
+```
+
+---
+
+## 18. Key Data Relationships
 
 ```
 Scenario

@@ -5,7 +5,13 @@
   >
     <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-800">
       <span class="text-[10px] uppercase tracking-widest text-gray-500">Intel Log</span>
-      <UButton icon="i-heroicons-x-mark" size="xs" color="neutral" variant="ghost" @click="visible = false" />
+      <UButton
+        icon="i-heroicons-x-mark"
+        size="xs"
+        color="neutral"
+        variant="ghost"
+        @click="visible = false"
+      />
     </div>
 
     <div class="max-h-36 overflow-y-auto divide-y divide-gray-800/40">

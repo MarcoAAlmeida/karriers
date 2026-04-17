@@ -232,11 +232,20 @@ const alliedSquadrons: Squadron[] = [
   makeSquadron('vb-8', 'VB-8 (Bombing Eight)', 10, 'allied', 'tf-16', 35, 35, 'trained'),
   makeSquadron('vt-8', 'VT-8 (Torpedo Eight)', 15, 'allied', 'tf-16', 15, 15, 'green'),
 
+  // TF-16 patrol aircraft — PBY Catalinas detached from VP-44 (long-range search)
+  makeSquadron('vp-44', 'VP-44 Catalinas', 20, 'allied', 'tf-16', 4, 4, 'trained'),
+
+  // TF-16 cruiser floatplanes (New Orleans / Vincennes / Minneapolis carry OS2U Kingfishers)
+  makeSquadron('tf16-kingfishers', 'TF-16 Cruiser Floatplanes', 21, 'allied', 'tf-16', 3, 3, 'trained'),
+
   // Yorktown (CV-5) — just repaired, using borrowed pilots
   makeSquadron('vf-3', 'VF-3 (Fighting Three)', 1, 'allied', 'tf-17', 25, 25, 'veteran'),
   makeSquadron('vb-3', 'VB-3 (Bombing Three)', 10, 'allied', 'tf-17', 18, 18, 'veteran'),
   makeSquadron('vs-5', 'VS-5 (Scouting Five)', 10, 'allied', 'tf-17', 19, 19, 'veteran'),
-  makeSquadron('vt-3', 'VT-3 (Torpedo Three)', 16, 'allied', 'tf-17', 12, 12, 'trained')
+  makeSquadron('vt-3', 'VT-3 (Torpedo Three)', 16, 'allied', 'tf-17', 12, 12, 'trained'),
+
+  // TF-17 cruiser floatplanes (Astoria / Portland carry OS2U Kingfishers)
+  makeSquadron('tf17-kingfishers', 'TF-17 Cruiser Floatplanes', 21, 'allied', 'tf-17', 2, 2, 'trained')
 ]
 
 const japaneseSquadrons: Squadron[] = [
@@ -291,8 +300,8 @@ export const MIDWAY: Scenario = {
   difficulty: 'medium',
   durationHours: 72,
 
-  startTime: { day: 1, hour: 6, minute: 0 },   // June 4, 0600
-  endTime: { day: 4, hour: 6, minute: 0 },       // June 7, 0600
+  startTime: { day: 1, hour: 6, minute: 0 }, // June 4, 0600
+  endTime: { day: 4, hour: 6, minute: 0 }, // June 7, 0600
 
   mapBounds: { minQ: 0, maxQ: 71, minR: 0, maxR: 83 },
 
@@ -317,6 +326,10 @@ export const MIDWAY: Scenario = {
       condition: { visibility: 100, windSpeed: 12, ceiling: 8000, seaState: 2 }
     }
   ],
+
+  // Aviation fuel pools — match public/scenarios/midway.json
+  alliedFuelPool: 15000,
+  japaneseFuelPool: 12000,
 
   forces: [alliedForce, japaneseForce],
 

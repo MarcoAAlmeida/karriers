@@ -71,7 +71,7 @@ function denormaliseForce(forceDef: ScenarioForceDefinition): ScenarioForce {
 function denormaliseTaskGroup(
   tgDef: TaskGroupDefinition,
   side: 'allied' | 'japanese'
-): { tg: TaskGroup; tgShips: Ship[]; tgSquadrons: Squadron[] } {
+): { tg: TaskGroup, tgShips: Ship[], tgSquadrons: Squadron[] } {
   const shipIds: string[] = tgDef.ships.map(s => s.id)
 
   const tgShips: Ship[] = tgDef.ships.map(shipDef => ({

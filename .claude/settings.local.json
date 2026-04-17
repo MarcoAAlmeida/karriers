@@ -50,7 +50,25 @@
       "WebFetch(domain:strudel.js.org)",
       "Bash(findstr :3000)",
       "Bash(grep -A 5 \"mapBounds\\\\|maxQ\\\\|maxR\" /c/Users/marco/pub/karriers/game/data/scenarios/*.ts)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(grep -E \"^\\\\s+\\\\{$\" /c/Users/marco/pub/karriers/game/data/aircraftTypes.ts -A 8)",
+      "Bash(npx vitest *)",
+      "Bash(python *)",
+      "Bash(npx tsx *)",
+      "Skill(update-config)",
+      "Bash(echo \"\")",
+      "Bash(echo \"# Claude Code local settings \\(may contain secrets\\)\")",
+      "Bash(echo \".claude/settings.local.json\")",
+      "mcp__claude_ai_Cloudflare_Developer_Platform__accounts_list",
+      "mcp__claude_ai_Cloudflare_Developer_Platform__set_active_account",
+      "mcp__claude_ai_Cloudflare_Developer_Platform__d1_database_create",
+      "mcp__claude_ai_Cloudflare_Developer_Platform__workers_list",
+      "mcp__claude_ai_Cloudflare_Developer_Platform__d1_database_get",
+      "Bash(npx eslint *)",
+      "Bash(npm run *)",
+      "Bash(pnpm run *)",
+      "mcp__claude_ai_Cloudflare_Developer_Platform__d1_databases_list",
+      "Bash(gh pr *)"
     ]
   }
 }

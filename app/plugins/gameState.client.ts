@@ -19,9 +19,9 @@ export default defineNuxtPlugin(() => {
   const mapStore = useMapStore()
 
   // Action bridge — lets Playwright drive the game without pixel-level clicks
-  ;(window as any).__GAME_ACTIONS__ = {
+  ;(window as unknown as { __GAME_ACTIONS__: Record<string, unknown> }).__GAME_ACTIONS__ = {
     selectTaskGroup: (id: string) => mapStore.selectTaskGroup(id),
-    issueOrder: (payload: unknown) => gameStore.issueOrder(payload as any),
+    issueOrder: (payload: unknown) => gameStore.issueOrder(payload as Parameters<typeof gameStore.issueOrder>[0]),
     togglePause: () => gameStore.togglePause(),
     selectFlightPlan: (id: string | null) => mapStore.selectFlightPlan(id),
 
@@ -45,12 +45,12 @@ export default defineNuxtPlugin(() => {
           forcesStore.syncFromSnapshot(result.snapshot)
           intelStore.syncFromSnapshot(result.snapshot)
         }
-        if (engine.isPaused) break   // scenario ended
+        if (engine.isPaused) break // scenario ended
       }
       engine.setTimeScale(prevScale)
       if (wasPaused) engine.pause()
       gameStore.isPaused = engine.isPaused
-    },
+    }
   }
 
   Object.defineProperty(window, '__GAME_STATE__', {
@@ -70,7 +70,7 @@ export default defineNuxtPlugin(() => {
           speed: tg.speed
         })),
 
-        ships: [...forcesStore.ships.values()].map(s => {
+        ships: [...forcesStore.ships.values()].map((s) => {
           const sc = gameStore.engine?.['state']?.shipClasses?.get(s.classId)
           return {
             id: s.id,
@@ -80,7 +80,7 @@ export default defineNuxtPlugin(() => {
             hullDamage: s.hullDamage,
             fires: s.fires,
             taskGroupId: s.taskGroupId,
-            isCarrier: sc ? (sc.type as string).includes('carrier') : false,
+            isCarrier: sc ? (sc.type as string).includes('carrier') : false
           }
         }),
 
@@ -105,13 +105,13 @@ export default defineNuxtPlugin(() => {
           id: c.id,
           lastKnownHex: { ...c.lastKnownHex },
           contactType: c.contactType,
-          confirmedTaskGroupId: c.confirmedTaskGroupId,
+          confirmedTaskGroupId: c.confirmedTaskGroupId
         })),
 
         sunkMarkers: intelStore.sunkMarkers.map(m => ({
           hex: { ...m.hex },
           side: m.side,
-          shipId: m.shipId,
+          shipId: m.shipId
         })),
 
         alliedContactCount: intelStore.alliedContacts.size,

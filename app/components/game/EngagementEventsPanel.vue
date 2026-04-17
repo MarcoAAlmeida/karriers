@@ -1,6 +1,8 @@
 <template>
-  <div class="flex shrink-0" data-testid="engagement-events-panel">
-
+  <div
+    class="flex shrink-0"
+    data-testid="engagement-events-panel"
+  >
     <!-- Toggle strip — always visible -->
     <div
       data-testid="events-panel-toggle"
@@ -20,7 +22,6 @@
       data-testid="events-panel-body"
       class="w-72 flex flex-col bg-slate-900 border-l border-slate-700"
     >
-
       <!-- Header -->
       <div class="flex items-center justify-between px-3 py-2 border-b border-slate-700 shrink-0">
         <span class="text-[10px] uppercase tracking-widest text-slate-400 font-medium">Engagement Events</span>
@@ -34,8 +35,14 @@
       </div>
 
       <!-- Events list -->
-      <div ref="scrollEl" class="flex-1 overflow-y-auto">
-        <div v-if="!entries.length" class="px-3 py-6 text-xs text-slate-600 text-center italic">
+      <div
+        ref="scrollEl"
+        class="flex-1 overflow-y-auto"
+      >
+        <div
+          v-if="!entries.length"
+          class="px-3 py-6 text-xs text-slate-600 text-center italic"
+        >
           No events yet
         </div>
 
@@ -58,8 +65,12 @@
 
           <!-- Text -->
           <div class="min-w-0 flex-1">
-            <p :class="['text-xs leading-snug break-words', entry.textClass]">{{ entry.text }}</p>
-            <p class="text-[10px] text-slate-600 tabular-nums mt-0.5">{{ entry.time }}</p>
+            <p :class="['text-xs leading-snug break-words', entry.textClass]">
+              {{ entry.text }}
+            </p>
+            <p class="text-[10px] text-slate-600 tabular-nums mt-0.5">
+              {{ entry.time }}
+            </p>
           </div>
 
           <!-- Click indicator for strike entries -->
@@ -71,7 +82,6 @@
         </div>
       </div>
     </div>
-
   </div>
 </template>
 

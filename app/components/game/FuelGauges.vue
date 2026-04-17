@@ -2,9 +2,11 @@
   <template v-if="showGauges">
     <div class="h-4 w-px bg-slate-700" />
     <div class="flex items-center gap-4">
-
       <!-- Allied fuel gauge -->
-      <div class="flex items-center gap-1.5" data-testid="fuel-allied">
+      <div
+        class="flex items-center gap-1.5"
+        data-testid="fuel-allied"
+      >
         <span class="font-mono text-xs text-sky-400 shrink-0">US</span>
         <div class="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
           <div
@@ -21,7 +23,10 @@
       </div>
 
       <!-- IJN fuel gauge -->
-      <div class="flex items-center gap-1.5" data-testid="fuel-ijn">
+      <div
+        class="flex items-center gap-1.5"
+        data-testid="fuel-ijn"
+      >
         <span class="font-mono text-xs text-rose-400 shrink-0">IJN</span>
         <div class="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
           <div
@@ -36,7 +41,6 @@
           data-testid="fuel-ijn-label"
         >{{ japanesePct === 0 ? 'GROUNDED' : `${japanesePct}%` }}</span>
       </div>
-
     </div>
   </template>
 </template>

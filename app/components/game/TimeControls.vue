@@ -1,6 +1,8 @@
 <template>
-  <div data-testid="hud-time-controls" class="pointer-events-auto flex items-center gap-3 px-4 py-2 bg-gray-950/80 backdrop-blur border-b border-gray-800">
-
+  <div
+    data-testid="hud-time-controls"
+    class="pointer-events-auto flex items-center gap-3 px-4 py-2 bg-gray-950/80 backdrop-blur border-b border-gray-800"
+  >
     <!-- Game time -->
     <span class="font-mono text-amber-300 text-sm tracking-wider min-w-32">
       {{ formattedTime }}
@@ -43,7 +45,6 @@
       icon="i-heroicons-arrow-left"
       @click="gameStore.returnToMenu()"
     />
-
   </div>
 </template>
 

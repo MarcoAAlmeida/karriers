@@ -21,8 +21,8 @@ const TARGET_PROXIMITY_HEXES = 2
 
 /** Lower score = better target. Carrier contacts preferred; ties broken by distance. */
 function contactScore(
-  pos: { q: number; r: number },
-  contact: { contactType: string; lastKnownHex: { q: number; r: number } }
+  pos: { q: number, r: number },
+  contact: { contactType: string, lastKnownHex: { q: number, r: number } }
 ): number {
   const carrierPenalty = contact.contactType === 'carrier-force' ? 0 : 1_000
   return carrierPenalty + hexDistance(pos, contact.lastKnownHex)
@@ -109,7 +109,7 @@ export class JapaneseAI {
       const distNm = hexDistance(tg.position, target.lastKnownHex) * NM_PER_HEX
 
       // Attack squadrons that are ready AND can reach the target
-      const readyAttackers = attackSquadrons.filter(sq => {
+      const readyAttackers = attackSquadrons.filter((sq) => {
         if (sq.deckStatus !== 'hangared' || sq.aircraftCount === 0) return false
         const ac = AIRCRAFT_TYPES.find(a => a.id === sq.aircraftTypeId)
         return ac ? distNm <= ac.maxRange * MAX_STRIKE_RANGE_FACTOR : false
@@ -137,7 +137,7 @@ export class JapaneseAI {
 
       // ── Close distance when out of range (and no strike active) ─────────
       if (!strikeActive) {
-        const allOutOfRange = attackSquadrons.every(sq => {
+        const allOutOfRange = attackSquadrons.every((sq) => {
           if (sq.deckStatus !== 'hangared' || sq.aircraftCount === 0) return true
           const ac = AIRCRAFT_TYPES.find(a => a.id === sq.aircraftTypeId)
           return ac ? distNm > ac.maxRange * MAX_STRIKE_RANGE_FACTOR : true
@@ -167,7 +167,7 @@ export class JapaneseAI {
 
   /** All non-destroyed attack squadrons belonging to this task group. */
   private getAttackSquadrons(tgId: string, snapshot: GameSnapshot): Squadron[] {
-    return [...snapshot.squadrons.values()].filter(sq => {
+    return [...snapshot.squadrons.values()].filter((sq) => {
       if (sq.taskGroupId !== tgId || sq.side !== 'japanese') return false
       if (sq.deckStatus === 'destroyed' || sq.aircraftCount === 0) return false
       const ac = AIRCRAFT_TYPES.find(a => a.id === sq.aircraftTypeId)
@@ -177,7 +177,7 @@ export class JapaneseAI {
 
   /** Fighter squadrons that are hangared and ready. */
   private getFighterSquadrons(tgId: string, snapshot: GameSnapshot): Squadron[] {
-    return [...snapshot.squadrons.values()].filter(sq => {
+    return [...snapshot.squadrons.values()].filter((sq) => {
       if (sq.taskGroupId !== tgId || sq.side !== 'japanese') return false
       if (sq.deckStatus !== 'hangared' || sq.aircraftCount === 0) return false
       const ac = AIRCRAFT_TYPES.find(a => a.id === sq.aircraftTypeId)
@@ -187,7 +187,7 @@ export class JapaneseAI {
 
   /** Scout/patrol-bomber squadrons that are hangared and ready. */
   private getScoutSquadrons(tgId: string, snapshot: GameSnapshot): Squadron[] {
-    return [...snapshot.squadrons.values()].filter(sq => {
+    return [...snapshot.squadrons.values()].filter((sq) => {
       if (sq.taskGroupId !== tgId || sq.side !== 'japanese') return false
       if (sq.deckStatus !== 'hangared' || sq.aircraftCount === 0) return false
       const ac = AIRCRAFT_TYPES.find(a => a.id === sq.aircraftTypeId)
@@ -203,10 +203,10 @@ export class JapaneseAI {
         .map(sq => sq.id)
     )
     return [...snapshot.flightPlans.values()].some(fp =>
-      fp.side === 'japanese' &&
-      fp.mission === 'strike' &&
-      (fp.status === 'airborne' || fp.status === 'inbound') &&
-      fp.squadronIds.some(id => tgSqIds.has(id))
+      fp.side === 'japanese'
+      && fp.mission === 'strike'
+      && (fp.status === 'airborne' || fp.status === 'inbound')
+      && fp.squadronIds.some(id => tgSqIds.has(id))
     )
   }
 
@@ -218,10 +218,10 @@ export class JapaneseAI {
         .map(sq => sq.id)
     )
     return [...snapshot.flightPlans.values()].some(fp =>
-      fp.side === 'japanese' &&
-      fp.mission === 'cap' &&
-      fp.status === 'airborne' &&
-      fp.squadronIds.some(id => tgSqIds.has(id))
+      fp.side === 'japanese'
+      && fp.mission === 'cap'
+      && fp.status === 'airborne'
+      && fp.squadronIds.some(id => tgSqIds.has(id))
     )
   }
 
@@ -233,10 +233,10 @@ export class JapaneseAI {
         .map(sq => sq.id)
     )
     return [...snapshot.flightPlans.values()].some(fp =>
-      fp.side === 'japanese' &&
-      fp.mission === 'scout' &&
-      fp.status === 'airborne' &&
-      fp.squadronIds.some(id => tgSqIds.has(id))
+      fp.side === 'japanese'
+      && fp.mission === 'scout'
+      && fp.status === 'airborne'
+      && fp.squadronIds.some(id => tgSqIds.has(id))
     )
   }
 
@@ -247,11 +247,11 @@ export class JapaneseAI {
    */
   private hasInboundStrikeToward(tg: TaskGroup, snapshot: GameSnapshot): boolean {
     return [...snapshot.flightPlans.values()].some(fp =>
-      fp.side === 'allied' &&
-      fp.mission === 'strike' &&
-      (fp.status === 'airborne' || fp.status === 'inbound') &&
-      fp.targetHex !== undefined &&
-      hexDistance(fp.targetHex, tg.position) <= TARGET_PROXIMITY_HEXES
+      fp.side === 'allied'
+      && fp.mission === 'strike'
+      && (fp.status === 'airborne' || fp.status === 'inbound')
+      && fp.targetHex !== undefined
+      && hexDistance(fp.targetHex, tg.position) <= TARGET_PROXIMITY_HEXES
     )
   }
 
@@ -260,7 +260,7 @@ export class JapaneseAI {
    * Tries the midpoint between current TG position and destination if set;
    * otherwise scouts 12 hexes ahead along the TG's expected axis of advance.
    */
-  private pickScoutTarget(tg: TaskGroup, _snapshot: GameSnapshot): { q: number; r: number } {
+  private pickScoutTarget(tg: TaskGroup, _snapshot: GameSnapshot): { q: number, r: number } {
     if (tg.destination) {
       return {
         q: Math.round((tg.position.q + tg.destination.q) / 2),

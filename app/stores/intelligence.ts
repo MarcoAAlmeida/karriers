@@ -9,7 +9,7 @@ export const useIntelligenceStore = defineStore('intelligence', () => {
   const sightingLog = ref<SightingReport[]>([])
   const combatLog = ref<CombatEvent[]>([])
   /** Permanent record of where ships were sunk, for canvas markers. */
-  const sunkMarkers = ref<Array<{ hex: HexCoord; side: Side; shipId: string }>>([])
+  const sunkMarkers = ref<Array<{ hex: HexCoord, side: Side, shipId: string }>>([])
 
   // ── Derived ───────────────────────────────────────────────────────────────
 

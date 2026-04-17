@@ -15,15 +15,15 @@ test.describe('Home screen', () => {
   test('background is dark (not white / not transparent)', async ({ page }) => {
     // Check the root wrapper div — doesn't rely on exact Tailwind class names
     const bg = await page.evaluate(() => {
-      const root = document.querySelector('[class*="bg-gray-950"]') ??
-                   document.querySelector('.min-h-screen')
+      const root = document.querySelector('[class*="bg-gray-950"]')
+        ?? document.querySelector('.min-h-screen')
       return root ? getComputedStyle(root).backgroundColor : null
     })
     expect(bg).not.toBeNull()
     // Any dark background — all channels should be low (< 30)
     // e.g. rgb(3, 7, 18) or rgb(2, 6, 23) in various Tailwind versions
     expect(bg).not.toBe('rgba(0, 0, 0, 0)')
-    expect(bg).not.toMatch(/^rgb\(25[0-9]/)  // not close to white
+    expect(bg).not.toMatch(/^rgb\(25[0-9]/) // not close to white
   })
 
   test('shows Battle of Midway scenario card with Play button', async ({ page }) => {

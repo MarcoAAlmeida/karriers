@@ -15,7 +15,7 @@ import type { DamageSystem } from './DamageSystem'
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const MAX_ROUNDS = 4
-const CARRIER_RETREAT_CHANCE = 0.90  // carriers almost always flee surface contact
+const CARRIER_RETREAT_CHANCE = 0.90 // carriers almost always flee surface contact
 
 // ── SurfaceCombatSystem ────────────────────────────────────────────────────
 
@@ -150,7 +150,7 @@ export class SurfaceCombatSystem {
 
     return {
       resolvedAt: currentTime,
-      location: alliedShips[0] ? { q: 0, r: 0 } : { q: 0, r: 0 },  // filled by caller
+      location: alliedShips[0] ? { q: 0, r: 0 } : { q: 0, r: 0 }, // filled by caller
       alliedTaskGroupId: alliedTGId,
       japaneseTaskGroupId: japaneseTGId,
       rounds,
@@ -187,7 +187,7 @@ export class SurfaceCombatSystem {
     })
 
     const shotsPerShip = Math.ceil(totalFires / sortedDefenders.length)
-    const baseHitChance = 0.08  // 8% per shot at surface range
+    const baseHitChance = 0.08 // 8% per shot at surface range
 
     for (const target of sortedDefenders) {
       const sc = this.shipClasses.get(target.classId)
@@ -221,7 +221,7 @@ export class SurfaceCombatSystem {
     }, 0)
   }
 
-  private retreatCarriers(taskGroups: TaskGroup[], allGroups: Map<string, TaskGroup>): void {
+  private retreatCarriers(taskGroups: TaskGroup[], _allGroups: Map<string, TaskGroup>): void {
     for (const tg of taskGroups) {
       // Mark carriers as needing to retire — they'll be moved by MovementSystem next step
       if (tg.currentOrder !== 'retire' && chance(this.rng, CARRIER_RETREAT_CHANCE)) {
