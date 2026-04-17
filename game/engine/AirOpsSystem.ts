@@ -13,56 +13,15 @@ import type {
 } from '../types'
 import { gameTimeToMinutes, minutesToGameTime } from '../types'
 import { hexDistance, lerpHex, NM_PER_HEX } from '../utils/hexMath'
+import type { ScenarioParams } from '../types/scenario'
+import { DEFAULT_SCENARIO_PARAMS } from '../types/scenario'
 
-// ── Constants ──────────────────────────────────────────────────────────────
+// ── Constants (internal only) ──────────────────────────────────────────────
 
 /** Steps needed to spot aircraft on deck before launch. */
 const SPOT_STEPS = 1
 /** Steps needed to recover and secure aircraft after landing. */
 const RECOVERY_STEPS = 1
-/** Minimum fuel reserve fraction — strikes beyond this range are rejected. */
-const FUEL_RESERVE = 0.15
-/**
- * Deck occupancy fraction at which recovery is hard-blocked and planes ditch.
- * Above this threshold no further aircraft can land.
- */
-const OVERCAP_HARD_LIMIT = 1.2
-/**
- * Extra minutes added to readyTime when recovering to an over-capacity deck
- * (between 100 % and OVERCAP_HARD_LIMIT).
- */
-const OVERCAP_PENALTY_MINUTES = 60
-
-/** Aviation fuel deducted from side pool per aircraft per hex flown. */
-const MISSION_FUEL_RATE: Partial<Record<MissionType, number>> = {
-  'scout': 1,
-  'search': 1,
-  'cap': 2,
-  'strike': 2,
-  'intercept': 2,
-  'escort': 1,
-  'asw': 1
-}
-/** Virtual range (hexes) used when computing CAP fuel cost (no fixed target). */
-const CAP_ORBIT_RANGE_HEXES = 5
-/**
- * Refuel + rearm time (minutes) after recovering from each mission type.
- * Gates the next launch from that squadron.
- */
-const REARM_MINUTES: Partial<Record<MissionType, number>> = {
-  'cap':       30,
-  'intercept': 30,
-  'strike':    60,
-  'escort':    60,
-  'scout':     30,
-  'search':    30,
-  'asw':       30,
-}
-/**
- * Extra minutes added to a recovering squadron's readyTime when its carrier
- * takes a hit during an enemy air strike (deck fires, blast damage).
- */
-const STRIKE_REARM_PENALTY_MINUTES = 60
 
 // ── Launch order (queued by GameEngine.issueOrder) ─────────────────────────
 
@@ -83,15 +42,18 @@ export interface LaunchOrder {
 export class AirOpsSystem {
   private aircraftTypes: Map<number, AircraftType>
   private shipClasses: Map<number, ShipClass>
+  private params: ScenarioParams
   private planCounter = 0
   private pendingLaunches: LaunchOrder[] = []
 
   constructor(
     aircraftTypes: Map<number, AircraftType>,
-    shipClasses: Map<number, ShipClass>
+    shipClasses: Map<number, ShipClass>,
+    params: ScenarioParams = DEFAULT_SCENARIO_PARAMS
   ) {
     this.aircraftTypes = aircraftTypes
     this.shipClasses = shipClasses
+    this.params = params
   }
 
   // ── Queue management ──────────────────────────────────────────────────────
@@ -370,11 +332,11 @@ export class AirOpsSystem {
           let maxRange: number
           if (order.oneWay) {
             // One-way strike: full one-way range minus fuel reserve
-            maxRange = aircraft.maxRange * (1 - FUEL_RESERVE)
+            maxRange = aircraft.maxRange * (1 - this.params.fuelReserve)
           } else if (order.mission === 'scout') {
             maxRange = aircraft.maxRange * 0.5
           } else {
-            maxRange = aircraft.maxRange * 0.5 * (1 - FUEL_RESERVE)
+            maxRange = aircraft.maxRange * 0.5 * (1 - this.params.fuelReserve)
           }
           if (distNm > maxRange) continue  // out of range
         }
@@ -422,10 +384,19 @@ export class AirOpsSystem {
     const totalAircraft = validSquadronIds.reduce(
       (n, id) => n + (squadrons.get(id)?.aircraftCount ?? 0), 0
     )
-    const ratePerHex = MISSION_FUEL_RATE[order.mission] ?? 1
+    const missionFuelRates: Partial<Record<MissionType, number>> = {
+      scout: this.params.scoutFuelRate,
+      search: this.params.searchFuelRate,
+      cap: this.params.capFuelRate,
+      strike: this.params.strikeFuelRate,
+      intercept: this.params.capFuelRate,
+      escort: this.params.escortFuelRate,
+      asw: this.params.aswFuelRate,
+    }
+    const ratePerHex = missionFuelRates[order.mission] ?? 1
     const rangeHexes = order.targetHex
       ? hexDistance(carrierPosition, order.targetHex)
-      : CAP_ORBIT_RANGE_HEXES
+      : this.params.capOrbitRangeHexes
     const fuelCost = totalAircraft * ratePerHex * rangeHexes
     if (plan.side === 'allied') {
       fuelPools.allied = Math.max(0, fuelPools.allied - fuelCost)
@@ -508,7 +479,7 @@ export class AirOpsSystem {
             (n, id) => n + (squadrons.get(id)?.aircraftCount ?? 0), 0
           )
 
-          if ((occupancy + incomingCount) > capacity * OVERCAP_HARD_LIMIT) {
+          if ((occupancy + incomingCount) > capacity * this.params.overcapHardLimit) {
             // Hard block — aircraft ditch
             plan.status = 'lost'
             for (const sqId of plan.squadronIds) {
@@ -521,7 +492,7 @@ export class AirOpsSystem {
             continue
           }
 
-          // Soft over-cap (100 %–120 %): recover but penalise readyTime
+          // Soft over-cap (100 %–overcapHardLimit): recover but penalise readyTime
           const isOverCap = (occupancy + incomingCount) > capacity
           plan.status = 'recovered'
           for (const sqId of plan.squadronIds) {
@@ -529,8 +500,8 @@ export class AirOpsSystem {
             if (!sq) continue
             sq.deckStatus = 'recovering'
             sq.currentMissionId = undefined
-            const rearmMin = REARM_MINUTES[plan.mission] ?? 0
-            const penalty = isOverCap ? OVERCAP_PENALTY_MINUTES : 0
+            const rearmMin = this.rearmMinutesFor(plan.mission)
+            const penalty = isOverCap ? this.params.overcapPenaltyMinutes : 0
             if (rearmMin + penalty > 0) {
               sq.readyTime = minutesToGameTime(nowMin + rearmMin + penalty)
             }
@@ -546,7 +517,7 @@ export class AirOpsSystem {
         if (!sq) continue
         sq.deckStatus = 'recovering'
         sq.currentMissionId = undefined
-        const rearmMin = REARM_MINUTES[plan.mission] ?? 0
+        const rearmMin = this.rearmMinutesFor(plan.mission)
         if (rearmMin > 0) {
           sq.readyTime = minutesToGameTime(nowMin + rearmMin)
         }
@@ -650,7 +621,7 @@ export class AirOpsSystem {
       const capacity = this.getCarrierCapacity(tg.id, ships, taskGroups)
       if (capacity > 0) {
         const occupancy = this.getDeckOccupancy(tg.id, squadrons)
-        if (occupancy >= capacity * OVERCAP_HARD_LIMIT) continue
+        if (occupancy >= capacity * this.params.overcapHardLimit) continue
       }
 
       const distNm = hexDistance(fromHex, tg.position) * NM_PER_HEX
@@ -663,6 +634,13 @@ export class AirOpsSystem {
     return bestTG
   }
 
+  /** Rearm/refuel minutes for a mission type, using params. */
+  private rearmMinutesFor(mission: MissionType): number {
+    if (mission === 'cap' || mission === 'intercept') return this.params.capRearmMinutes
+    if (mission === 'strike' || mission === 'escort') return this.params.strikeRearmMinutes
+    return this.params.scoutRearmMinutes  // scout, search, asw
+  }
+
   // ── ETA computation ───────────────────────────────────────────────────────
 
   private computeEta(
@@ -673,8 +651,8 @@ export class AirOpsSystem {
     launchTime: GameTime
   ): GameTime {
     if (!targetHex) {
-      // CAP or search — orbit for 3 steps (90 min) then return
-      return minutesToGameTime(gameTimeToMinutes(launchTime) + 90)
+      // CAP or search — orbit for capOrbitMinutes then return
+      return minutesToGameTime(gameTimeToMinutes(launchTime) + this.params.capOrbitMinutes)
     }
 
     const slowestSpeed = this.slowestCruiseSpeed(squadronIds, squadrons)
@@ -766,7 +744,7 @@ export class AirOpsSystem {
       if (sq.taskGroupId !== ship.taskGroupId) continue
       if (sq.deckStatus !== 'recovering') continue
       const baseMin = sq.readyTime ? gameTimeToMinutes(sq.readyTime) : nowMin
-      sq.readyTime = minutesToGameTime(baseMin + STRIKE_REARM_PENALTY_MINUTES)
+      sq.readyTime = minutesToGameTime(baseMin + this.params.strikeRearmPenaltyMinutes)
     }
   }
 }

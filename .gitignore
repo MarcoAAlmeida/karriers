@@ -42,3 +42,6 @@ traces/
 test-results/
 playwright-report/
 .env
+
+# Claude Code local settings (may contain secrets)
+.claude/settings.local.json

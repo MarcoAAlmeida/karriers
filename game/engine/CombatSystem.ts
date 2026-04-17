@@ -16,6 +16,8 @@ import { chance } from '../utils/dice'
 import { gameTimeToMinutes } from '../types'
 import { coordKey } from '../utils/hexMath'
 import type { AirOpsSystem } from './AirOpsSystem'
+import type { ScenarioParams } from '../types/scenario'
+import { DEFAULT_SCENARIO_PARAMS } from '../types/scenario'
 
 // ── CombatSystem ───────────────────────────────────────────────────────────
 
@@ -24,17 +26,20 @@ export class CombatSystem {
   private aircraftTypes: Map<number, AircraftType>
   private shipClasses: Map<number, ShipClass>
   private airOpsSystem: AirOpsSystem
+  private params: ScenarioParams
 
   constructor(
     rng: Rng,
     aircraftTypes: Map<number, AircraftType>,
     shipClasses: Map<number, ShipClass>,
-    airOpsSystem: AirOpsSystem
+    airOpsSystem: AirOpsSystem,
+    params: ScenarioParams = DEFAULT_SCENARIO_PARAMS
   ) {
     this.rng = rng
     this.aircraftTypes = aircraftTypes
     this.shipClasses = shipClasses
     this.airOpsSystem = airOpsSystem
+    this.params = params
   }
 
   // ── Per-step processing ───────────────────────────────────────────────────
@@ -221,8 +226,8 @@ export class CombatSystem {
     const defenderQuality = this.squadronQuality(defenders)
     const attackerQuality = this.squadronQuality(attackers)
 
-    // Each defending fighter gets ~1.5 shots at attackers
-    const shotsPerDefender = 1.5
+    // Each defending fighter gets ~1.5 shots at attackers (scaled by CAP effectiveness)
+    const shotsPerDefender = 1.5 * this.params.capEffectivenessMultiplier
     const defenderHitChance = Math.min(0.45, defenderQuality * 0.3)
     const expectedAttackerLosses = Math.round(defenderCount * shotsPerDefender * defenderHitChance)
     const attackerLosses = Math.min(attackerCount, this.poissonRound(expectedAttackerLosses))
@@ -339,16 +344,16 @@ export class CombatSystem {
     let floodingPerHit: number
 
     if (aircraft.torpedoCapable && squadron.ordnanceLoaded === 'torpedoes') {
-      damagePerHit = 18 * armorFactor
+      damagePerHit = 18 * armorFactor * this.params.torpedoDamageMultiplier
       firesPerHit = 0
-      floodingPerHit = 20
+      floodingPerHit = 20 * this.params.floodingMultiplier
     } else if (aircraft.role === 'dive-bomber') {
-      damagePerHit = 12 * armorFactor
-      firesPerHit = 1
+      damagePerHit = 12 * armorFactor * this.params.bombDamageMultiplier
+      firesPerHit = 1 * this.params.fireDamageMultiplier
       floodingPerHit = 5
     } else {
-      damagePerHit = 8 * armorFactor
-      firesPerHit = chance(this.rng, 0.5) ? 1 : 0
+      damagePerHit = 8 * armorFactor * this.params.bombDamageMultiplier
+      firesPerHit = chance(this.rng, 0.5) ? 1 * this.params.fireDamageMultiplier : 0
       floodingPerHit = 3
     }
 

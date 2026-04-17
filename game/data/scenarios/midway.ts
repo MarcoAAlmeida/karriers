@@ -327,6 +327,10 @@ export const MIDWAY: Scenario = {
     }
   ],
 
+  // Aviation fuel pools — match public/scenarios/midway.json
+  alliedFuelPool: 15000,
+  japaneseFuelPool: 12000,
+
   forces: [alliedForce, japaneseForce],
 
   victoryConditions: [

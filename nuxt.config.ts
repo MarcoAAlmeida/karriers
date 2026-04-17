@@ -3,11 +3,20 @@ import { fileURLToPath } from 'node:url'
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   modules: [
+    '@nuxthub/core',
     '@nuxt/eslint',
     '@nuxt/ui',
     '@pinia/nuxt',
     'nuxt-llms'
   ],
+
+  hub: {
+    database: true
+  },
+
+  nitro: {
+    preset: 'cloudflare-pages'
+  },
 
   ssr: false,
 

@@ -7,6 +7,83 @@ Software-development view of the simulation engine (`game/`). No Vue/Nuxt concep
 
 ---
 
+## 0. ScenarioParams
+
+**Files:** `game/types/scenario.ts`, `game/utils/scenarioState.ts`
+
+All tuneable engine constants live in a flat, serialisable `ScenarioParams` object. This is the genome for the evolutionary trainer (Sprint 27). Pass any subset to `GameEngine` (and to `buildStateFromScenario`) to override defaults.
+
+```typescript
+import { GameEngine } from './game/engine/GameEngine'
+import { buildStateFromScenario } from './game/utils/scenarioState'
+import { MIDWAY } from './game/data/scenarios/midway'
+
+const state = buildStateFromScenario(MIDWAY, { seed: 42, spawnMode: 'seeded' })
+const engine = new GameEngine(state, MIDWAY.startTime, MIDWAY.endTime, {
+  seed: 42,
+  bombDamageMultiplier: 1.5,
+  capEffectivenessMultiplier: 0.7,
+  durationSteps: 96,
+})
+```
+
+### ScenarioParams fields
+
+| Field | Default | Category |
+|---|---|---|
+| `seed` | 0 | RNG — 0 = use `Date.now()` |
+| `spawnMode` | `'fixed'` | Spawn — `'fixed'` / `'seeded'` / `'random'` |
+| `durationSteps` | 0 | Duration — 0 = use scenario `endTime` |
+| `shipFuelPerStepFull` | 0.5 | Ship fuel — % per step at full speed |
+| `strikeFuelRate` | 2 | Aviation fuel — units/aircraft/hex |
+| `capFuelRate` | 2 | Aviation fuel — units/aircraft/hex |
+| `scoutFuelRate` | 1 | Aviation fuel — units/aircraft/hex |
+| `searchFuelRate` | 1 | Aviation fuel — units/aircraft/hex |
+| `escortFuelRate` | 1 | Aviation fuel — units/aircraft/hex |
+| `aswFuelRate` | 1 | Aviation fuel — units/aircraft/hex |
+| `fuelReserve` | 0.15 | Aviation fuel — minimum reserve fraction |
+| `capOrbitRangeHexes` | 5 | CAP — fuel cost proxy distance |
+| `capOrbitMinutes` | 90 | CAP — orbit duration before auto-return |
+| `overcapHardLimit` | 1.2 | Deck — occupancy fraction above which aircraft ditch |
+| `overcapPenaltyMinutes` | 60 | Deck — extra readyTime on over-capacity recovery |
+| `capRearmMinutes` | 30 | Rearm — cap/intercept |
+| `strikeRearmMinutes` | 60 | Rearm — strike/escort |
+| `scoutRearmMinutes` | 30 | Rearm — scout/search/asw |
+| `strikeRearmPenaltyMinutes` | 60 | Rearm — extra delay when carrier takes a hit |
+| `bombDamageMultiplier` | 1.0 | Damage — dive/level bomb hull damage |
+| `torpedoDamageMultiplier` | 1.0 | Damage — torpedo hull damage |
+| `fireDamageMultiplier` | 1.0 | Damage — fires started on hit |
+| `floodingMultiplier` | 1.0 | Damage — flooding risk on torpedo hit |
+| `capEffectivenessMultiplier` | 1.0 | Combat — CAP shots per defender |
+| `fireDamagePerStep` | 4 | Damage — hull HP lost per active fire per step |
+| `fireSpreadChance` | 0.22 | Damage — probability a fire spreads each step |
+| `floodDamageRate` | 0.08 | Damage — hull % lost per flooding risk per step |
+| `detectionRangeMultiplier` | 1.0 | Search — effective detection range scalar |
+
+### Spawn modes
+
+| Mode | Behaviour |
+|---|---|
+| `'fixed'` | TG positions taken directly from the scenario definition |
+| `'seeded'` | Deterministic ±10-hex random offset per TG using `params.seed` |
+| `'random'` | Non-deterministic ±10-hex offset using `Date.now()` as seed |
+
+### buildStateFromScenario
+
+`buildStateFromScenario(scenario, params?)` in `game/utils/scenarioState.ts` is the single entry point for constructing `MutableGameState`. Both `useScenarioLoader` (browser) and `scripts/headless.ts` (Node.js CLI) call it, guaranteeing identical initial state.
+
+### Headless runner
+
+`scripts/headless.ts` runs a full game from the command line with no Vue or Nuxt:
+
+```bash
+pnpm headless                        # fixed seed 42, default params
+pnpm headless -- --seed 99           # reproducible run with seed 99
+pnpm headless -- --durationSteps 48  # cap at 48 steps (24 sim-hours)
+```
+
+---
+
 ## 1. Engine ↔ Vue Boundary
 
 - `GameEngine` is a plain TypeScript class stored as `shallowRef<GameEngine>` in `stores/game.ts`
@@ -117,24 +194,32 @@ interface GameSnapshot {
 }
 ```
 
-### SidedSnapshot (Sprint 25+)
+### SidedSnapshot
 
-Fog-of-war-filtered view for a single side. Used by `AIAgent.decideTurn()` and logged to NuxtHub D1.
+Fog-of-war-filtered observation for a single side. Used by `AIAgent.decideTurn()` and logged to NuxtHub D1.
 AI agents and training pipelines must **never** receive `GameSnapshot` directly — only `SidedSnapshot`.
 
 ```typescript
 // engine.getObservation(side: Side): SidedSnapshot
 interface SidedSnapshot {
-  time: GameTime
-  ownTaskGroups:  ReadonlyMap<string, TaskGroup>   // own side, full state
-  enemyContacts:  ReadonlyMap<string, ContactRecord> // enemy — FOW-filtered only
-  squadrons:      ReadonlyMap<string, Squadron>
-  flightPlans:    ReadonlyMap<string, FlightPlan>
+  side:           Side
+  time:           GameTime
+  stepFraction:   number
+  ownTaskGroups:  ReadonlyMap<string, TaskGroup>     // own forces, full ground truth
+  ownShips:       ReadonlyMap<string, Ship>
+  ownSquadrons:   ReadonlyMap<string, Squadron>
+  ownFlightPlans: ReadonlyMap<string, FlightPlan>
+  enemyContacts:  ReadonlyMap<string, ContactRecord> // FOW-filtered: only what own scouts found
   combatEvents:   CombatEvent[]
   gameEvents:     GameEvent[]
-  // No taskGroups ground-truth — never expose enemy real positions
+  sightingReports: SightingReport[]
+  alliedFuelPool:  number
+  japaneseFuelPool: number
+  // No enemy taskGroups — real positions never exposed
 }
 ```
+
+`getObservation('allied')` filters `buildSnapshot()` by side: own maps include only same-side entities; `enemyContacts` is the `alliedContacts` map (what Allied scouts have found), not the Japanese `taskGroups` map.
 
 ---
 
@@ -289,33 +374,41 @@ Manages the carrier deck cycle and flight plan lifecycle.
 hangared → spotted (SPOT_STEPS=1) → airborne → recovering (RECOVERY_STEPS=1) → rearming → hangared
 ```
 
-### Constants
+### Hardcoded constants
 | Constant | Value | Meaning |
 |---|---|---|
 | `SPOT_STEPS` | 1 | Steps to spot aircraft before launch |
 | `RECOVERY_STEPS` | 1 | Steps to recover after landing |
-| `FUEL_RESERVE` | 0.15 | Minimum fuel fraction; launches beyond range are rejected |
-| `CAP_ORBIT_RANGE_HEXES` | 5 | Virtual range (hexes) used to compute fuel cost for CAP (no fixed destination) |
-| `OVERCAP_HARD_LIMIT` | 1.2 | Deck occupancy fraction above which recovering aircraft ditch |
-| `OVERCAP_PENALTY_MINUTES` | 60 | Extra readyTime added when recovering to an over-capacity deck |
-| `STRIKE_REARM_PENALTY_MINUTES` | 60 | Extra readyTime added to recovering squadrons when their carrier takes a strike hit |
+
+### ScenarioParams-driven values (Sprint 24+)
+All other AirOps constants are now tuneable via `ScenarioParams` (see §0). Default values match the previously hardcoded originals.
+
+| ScenarioParams field | Default | Meaning |
+|---|---|---|
+| `fuelReserve` | 0.15 | Minimum fuel fraction; launches beyond range are rejected |
+| `capOrbitRangeHexes` | 5 | Virtual range (hexes) used to compute fuel cost for CAP (no fixed destination) |
+| `overcapHardLimit` | 1.2 | Deck occupancy fraction above which recovering aircraft ditch |
+| `overcapPenaltyMinutes` | 60 | Extra readyTime added when recovering to an over-capacity deck |
+| `strikeRearmPenaltyMinutes` | 60 | Extra readyTime added to recovering squadrons when their carrier takes a strike hit |
+| `capOrbitMinutes` | 90 | CAP orbit duration before auto-return |
+| `capRearmMinutes` | 30 | Rearm time for cap/intercept missions |
+| `strikeRearmMinutes` | 60 | Rearm time for strike/escort missions |
+| `scoutRearmMinutes` | 30 | Rearm time for scout/search/asw missions |
+| `capFuelRate` | 2 | Fuel units per aircraft per hex (cap/strike/intercept) |
+| `strikeFuelRate` | 2 | Fuel units per aircraft per hex (strike) |
+| `scoutFuelRate` | 1 | Fuel units per aircraft per hex (scout/search/escort/asw) |
 
 ### Aviation fuel cost
-Each launch deducts `aircraftCount × hexesTravelled × MISSION_FUEL_RATE[mission]` from the side's fuel pool. CAP uses `CAP_ORBIT_RANGE_HEXES` as its distance proxy. Launches are rejected when `fuelPool ≤ 0`.
-
-| Mission | Fuel rate (units/aircraft/hex) |
-|---|---|
-| strike, cap, intercept | 2 |
-| scout, search, escort, asw | 1 |
+Each launch deducts `aircraftCount × hexesTravelled × fuelRate` from the side's fuel pool. CAP uses `capOrbitRangeHexes` as its distance proxy. Launches are rejected when `fuelPool ≤ 0`.
 
 ### Per-mission rearm times
-After recovery, a squadron's `readyTime` is gated by `REARM_MINUTES` for that mission type. A strike hit on the carrier extends all recovering squadrons' `readyTime` by a further `STRIKE_REARM_PENALTY_MINUTES`.
+After recovery, a squadron's `readyTime` is gated by the mission-specific rearm param. A strike hit on the carrier extends all recovering squadrons' `readyTime` by `strikeRearmPenaltyMinutes`.
 
-| Mission | Rearm time |
-|---|---|
-| cap, intercept | 30 min |
-| strike, escort | 60 min |
-| scout, search, asw | 30 min |
+| Mission | ScenarioParams field | Default |
+|---|---|---|
+| cap, intercept | `capRearmMinutes` | 30 min |
+| strike, escort | `strikeRearmMinutes` | 60 min |
+| scout, search, asw | `scoutRearmMinutes` | 30 min |
 
 ### processStep() sub-steps
 Each call to `processStep()` runs these stages in order:
@@ -457,7 +550,8 @@ rollD100(rng): number            // 1–100
 chance(rng, pct): boolean        // true with probability pct/100
 ```
 
-The engine constructor accepts an optional `seed` parameter for deterministic replays.
+The engine seed is supplied via `ScenarioParams.seed`. When `seed > 0`, `GameEngine` uses it for deterministic replays; when `seed === 0` (default), it falls back to `Date.now()`. The same seed field is used by `buildStateFromScenario` for `spawnMode: 'seeded'` position offsets.
+
 Zero `Math.random()` calls exist anywhere in `game/` — all randomness flows through this RNG.
 
 ---
@@ -483,7 +577,79 @@ Needed for MapLibre sync:
 
 ---
 
-## 16. Key Data Relationships
+## 16. Feature Vector
+
+**File:** `game/utils/featureVector.ts`
+
+Converts a `SidedSnapshot` into a fixed-size `Float32Array` for ML use. The schema is **frozen** — changing it invalidates stored training data.
+
+```typescript
+import { toFeatureVector, FEATURE_VECTOR_SIZE } from '@game/utils/featureVector'
+
+const vec = toFeatureVector(engine.getObservation('allied'), 'allied')
+// vec.length === FEATURE_VECTOR_SIZE === 264
+```
+
+### Layout (264 floats total)
+
+| Segment | Slots | Features | Total | Contents |
+|---|---|---|---|---|
+| Own task groups | 4 | 8 | 32 | active, q, r, speed, fuelState, shipCount, order, carrier-proxy |
+| Enemy contacts | 8 | 6 | 48 | active, q, r, contactType, ageMinutes, estimatedCourse |
+| Own squadrons | 16 | 8 | 128 | present, aircraftCount, fuelLoad, deckStatus, missionType, experience, role, isAirborne |
+| Own flight plans | 8 | 6 | 48 | active, targetQ, targetR, mission, status, elapsed fraction |
+| Scalar globals | — | 8 | 8 | alliedFuelPct, japaneseFuelPct, ownFuelPct, enemyFuelPct, combatEventCount, sightingCount, planCount, reserved |
+
+All values are clamped to `[0, 1]`. Empty slots (fewer than max entities) are zero-padded. Sparse sequences are front-packed — the first present entity always occupies slot 0.
+
+---
+
+## 17. NuxtHub D1 Persistence
+
+**Files:** `server/database/schema.ts`, `server/utils/drizzle.ts`, `server/api/games/index.post.ts`, `server/plugins/database.ts`
+
+Every completed game is logged to a NuxtHub D1 (SQLite) database. Data is logged via the `useGameLogger` composable, which accumulates `SidedSnapshot`s per step and POSTs them to `/api/games` on `ScenarioEnded`.
+
+### Schema
+
+```
+games
+  id             TEXT PRIMARY KEY
+  scenario_id    TEXT
+  params_json    TEXT        -- serialised ScenarioParams
+  allied_agent   TEXT        -- 'human' | 'rule-based' | 'evolutionary' | …
+  japanese_agent TEXT
+  winner         TEXT        -- 'allied' | 'japanese' | 'draw'
+  duration_steps INTEGER
+  allied_points  INTEGER
+  japanese_points INTEGER
+  created_at     INTEGER     -- Unix ms
+
+steps
+  id                     INTEGER PRIMARY KEY AUTOINCREMENT
+  game_id                TEXT → games.id
+  step_number            INTEGER
+  allied_snapshot_json   TEXT   -- serialised SidedSnapshot (not ground truth)
+  japanese_snapshot_json TEXT
+```
+
+`snapshot_json` stores the per-side observations, never the raw `GameSnapshot` ground truth, so stored data matches what AI agents see.
+
+### Local dev
+
+`@nuxthub/core` emulates D1 with SQLite in-process. No Docker required. Tables are created via `server/plugins/database.ts` on Nitro startup using `CREATE TABLE IF NOT EXISTS`.
+
+Drizzle ORM is used for type-safe inserts via `server/utils/drizzle.ts`:
+
+```typescript
+export function useDrizzle() {
+  return drizzle(hubDatabase(), { schema })
+}
+```
+
+---
+
+## 18. Key Data Relationships
 
 ```
 Scenario

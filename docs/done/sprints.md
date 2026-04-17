@@ -4,6 +4,57 @@ Most recent sprint always on top.
 
 ---
 
+## Sprint 25 — NuxtHub Persistence + FOW-Filtered Snapshot
+
+**Goal:** Log every completed game to NuxtHub D1. Fix the engine gap that would poison training data by exposing ground-truth enemy positions to AI agents.
+
+### Delivered
+
+- **`SidedSnapshot` interface + `engine.getObservation(side: Side): SidedSnapshot`** (`game/engine/GameEngine.ts`) — filters `buildSnapshot()` through the FOW: `ownTaskGroups/ownShips/ownSquadrons/ownFlightPlans` contain only the requesting side's forces (full truth); `enemyContacts` is the side's active contact map — never the ground-truth enemy `taskGroups`. Enemy positions are not reachable from a `SidedSnapshot`.
+- **`game/utils/featureVector.ts`** — `toFeatureVector(obs: SidedSnapshot, side: Side): Float32Array` with `FEATURE_VECTOR_SIZE = 264`. Fixed-size layout: 4 TGs × 8 + 8 contacts × 6 + 16 squadrons × 8 + 8 flight plans × 6 + 8 scalar globals. Schema frozen — changing it invalidates stored training data. All values clamped to `[0, 1]`.
+- **`@nuxthub/core` + `drizzle-orm` installed** — `hub: { database: true }` added to `nuxt.config.ts`; `drizzle-kit` added as dev dependency.
+- **`server/database/schema.ts`** — Drizzle ORM schema: `games` table (id, scenario_id, params_json, allied_agent, japanese_agent, winner, duration_steps, allied_points, japanese_points, created_at) and `steps` table (game_id, step_number, allied_snapshot_json, japanese_snapshot_json).
+- **`server/utils/drizzle.ts`** — `useDrizzle()` helper wrapping `hubDatabase()` with the Drizzle D1 adapter.
+- **`server/plugins/database.ts`** — Nitro plugin; runs `CREATE TABLE IF NOT EXISTS` for both tables on startup (SQLite local dev via NuxtHub, D1 in production).
+- **`server/api/games/index.post.ts`** — POST handler: accepts game metadata + step log; inserts `games` row then bulk-inserts all `steps` rows; returns the new game ID.
+- **`app/composables/useGameLogger.ts`** — subscribes to engine `StepComplete` (accumulates per-step Allied and Japanese `SidedSnapshot`s) and `ScenarioEnded` (POSTs full log to `/api/games`). Snapshots serialized with `Object.fromEntries` for Map fields; `Infinity` fuel pools serialized as `-1`.
+- **`app/composables/useScenarioLoader.ts`** — `loadScenario()` now calls `logger.init(engine, scenario.id)` after engine creation.
+- **`tests/engine/Sprint25.test.ts`** — 8 tests: FOW isolation (`ownTaskGroups` never contains enemy TGs; `enemyContacts` never references allied TGs), own-forces completeness, ship/squadron side filtering, `enemyContacts` size matches full-snapshot `alliedContacts`, feature vector correct length (264), determinism, all values in `[0, 1]`, allied vs Japanese vectors differ.
+- **Tests:** 144/144 unit tests across 20 files — all green in < 2 s. 25/25 Playwright E2E tests passing.
+
+### Architecture notes
+- `getObservation()` calls `buildSnapshot()` internally — same cost as `getSnapshot()`. The step logger calls it twice per step (once per side), so it builds two snapshots per step. Acceptable for the current game size; if profiling shows overhead, both sides could be built from a single `buildSnapshot()` call.
+- `SidedSnapshot` does not include `movementPaths` (renderer-only data) — AI agents have no use for movement path arrays.
+- Snapshot JSON in the database is not compressed. For the Midway scenario (4 TGs, 35 ships, 25 squadrons) a single step is ~8 KB per side. A full 48-step game is ~750 KB of step data — within D1's 1 MB row limit per side, well within the 10 GB database limit.
+- `useGameLogger` uses plain JS variables (not `ref`) for the step accumulator — no Vue reactivity overhead for data that's only read once at game end.
+
+---
+
+## Sprint 24 — ScenarioParams + Headless Runner
+
+**Goal:** Parameterise the engine and run it without a renderer. Foundation for all training work.
+
+### Delivered
+
+- **`game/types/scenario.ts`** — `ScenarioParams` interface (28 fields: fuel rates, damage multipliers, CAP effectiveness, detection range, RNG seed, spawn mode, duration) and `DEFAULT_SCENARIO_PARAMS` const matching all previous hardcoded values. Fully flat and serialisable — designed to serve as a GA genome.
+- **All engine subsystems parameterised** — `AirOpsSystem`, `CombatSystem`, `DamageSystem`, `SearchSystem`, and `GameEngine` all accept `params: Partial<ScenarioParams>` (merged with `DEFAULT_SCENARIO_PARAMS` in each constructor). All previous hardcoded magic numbers removed.
+- **`game/utils/scenarioState.ts`** — `buildStateFromScenario(scenario, params?)` pure-TS state builder. Replaces the private `buildState` function in `useScenarioLoader.ts`. Handles `spawnMode` by applying ±10-hex seeded offsets to TG positions using `createRng`. Fuel pool fallback changed from `?? 0` to `?? Infinity` so scenarios without explicit pools run as unlimited.
+- **`spawnMode: 'fixed' | 'seeded' | 'random'`** — `seeded` applies deterministic random offsets using `params.seed`; `random` uses `Date.now()` as seed; `fixed` leaves scenario positions unchanged.
+- **`scripts/headless.ts`** — CLI runner; parses `--seed`, `--durationSteps`, `--spawnMode` args; default seed=42; runs `JapaneseAI` each step; safety limit 20,000 steps; prints JSON result to stdout. Completes full Midway in ~17 ms.
+- **`package.json`** — `"headless": "tsx scripts/headless.ts"` script added.
+- **`game/data/scenarios/midway.ts`** — Added `alliedFuelPool: 15000, japaneseFuelPool: 12000` to match `public/scenarios/midway.json`.
+- **`app/composables/useScenarioLoader.ts`** — Replaced private `buildState` with import of `buildStateFromScenario` from `@game/utils/scenarioState`.
+- **`tests/engine/ScenarioParams.test.ts`** — 5 tests: headless completes, 10× fuel ends faster, seeded spawn deterministic, different seeds give different positions, durationSteps caps game length.
+- **Bug fix:** `buildStateFromScenario` fallback was `?? 0` causing fuel-exhaustion to fire at step 1 when `midway.ts` had no pool fields. Fixed to `?? Infinity` + added explicit pool fields to `midway.ts`.
+- **Tests:** 136/136 unit tests across 19 files — all green in < 2 s. 25/25 Playwright E2E tests passing.
+
+### Architecture notes
+- `ScenarioParams` is flat with individual named fields (not a map) so it is directly usable as a serialisable GA genome in Sprint 27 without any special serialisation logic.
+- `buildStateFromScenario` is the single source of truth for state construction — both `useScenarioLoader` (Vue) and `scripts/headless.ts` (Node.js) call it, guaranteeing identical initial state.
+- `ONE_STEP_MS = 30 * 130 + 1` in the headless runner guarantees exactly one step fires per `tick()` call at 1× speed without relying on time accumulation.
+
+---
+
 ## Sprint 23 — Fuel Gauge HUD *(Bug 5)*
 
 **Goal:** Both sides' fuel states are always visible in the TopStatusBar.

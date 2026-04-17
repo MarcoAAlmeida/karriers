@@ -1,6 +1,5 @@
 import type { Scenario } from '@game/types'
-import type { MutableGameState } from '@game/engine/GameEngine'
-import { coordKey } from '@game/utils/hexMath'
+import { buildStateFromScenario } from '@game/utils/scenarioState'
 
 /**
  * Converts a Scenario into a MutableGameState and initialises the engine.
@@ -10,6 +9,7 @@ export function useScenarioLoader() {
   const gameStore = useGameStore()
   const forcesStore = useForcesStore()
   const intelStore = useIntelligenceStore()
+  const logger = useGameLogger()
 
   function loadScenario(scenario: Scenario): void {
     // Clear previous state
@@ -19,11 +19,13 @@ export function useScenarioLoader() {
     // Snapshot initial fuel pools before any steps run (used to compute gauge %)
     forcesStore.initFuelPools(scenario.alliedFuelPool ?? 0, scenario.japaneseFuelPool ?? 0)
 
-    const state = buildState(scenario)
+    const state = buildStateFromScenario(scenario)
     const engine = gameStore.initEngine(scenario.startTime, scenario.endTime, state)
 
+    logger.init(engine, scenario.id)
+
     // Subscribe intelligence store to engine sighting events
-    engine.events.on('SightingDetected', (report) => {
+    engine.events.on('SightingDetected', (_report) => {
       // Toasts for player-relevant sightings are handled in the HUD component
       // The intelligence store syncs on StepComplete
     })
@@ -35,55 +37,4 @@ export function useScenarioLoader() {
   }
 
   return { loadScenario }
-}
-
-// ── State builder ─────────────────────────────────────────────────────────
-
-function buildState(scenario: Scenario): MutableGameState {
-  const taskGroups = new Map<string, import('@game/types').TaskGroup>()
-  const ships = new Map<string, import('@game/types').Ship>()
-  const squadrons = new Map<string, import('@game/types').Squadron>()
-  const hexCells = new Map<string, import('@game/types').HexCell>()
-  const aircraftTypes = new Map<number, import('@game/types').AircraftType>()
-  const shipClasses = new Map<number, import('@game/types').ShipClass>()
-
-  // Reference data
-  for (const ac of scenario.aircraftTypes) aircraftTypes.set(ac.id, ac)
-  for (const sc of scenario.shipClasses) shipClasses.set(sc.id, sc)
-
-  // Forces
-  for (const force of scenario.forces) {
-    for (const ship of force.ships) ships.set(ship.id, { ...ship })
-    for (const tg of force.taskGroups) taskGroups.set(tg.id, { ...tg })
-    for (const sq of force.squadrons) squadrons.set(sq.id, { ...sq })
-  }
-
-  // Hex cells — mark atoll/island hexes (Midway Atoll)
-  // Default is open sea; only explicitly defined terrain gets a cell entry.
-  // For Midway, mark the atoll hex as 'atoll' terrain.
-  const atolls: { q: number; r: number }[] = [
-    { q: 35, r: 55 }  // Midway Atoll
-  ]
-  for (const pos of atolls) {
-    const key = coordKey(pos)
-    hexCells.set(key, { q: pos.q, r: pos.r, terrain: 'atoll' })
-  }
-
-  return {
-    taskGroups,
-    ships,
-    squadrons,
-    flightPlans: new Map(),
-    alliedContacts: new Map(),
-    japaneseContacts: new Map(),
-    hexCells,
-    weatherZones: scenario.weatherZones,
-    aircraftTypes,
-    shipClasses,
-    victoryConditions: scenario.victoryConditions,
-    pendingCombatEvents: [],
-    pendingGameEvents: [],
-    alliedFuelPool: scenario.alliedFuelPool ?? 0,
-    japaneseFuelPool: scenario.japaneseFuelPool ?? 0
-  }
 }

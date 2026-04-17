@@ -5,7 +5,7 @@ Completed sprint history lives in `docs/done/sprints.md`.
 
 ---
 
-## Current State (end of Sprint 23)
+## Current State (end of Sprint 25)
 
 - ✅ Full engine: movement, search, fog of war, air ops, combat, damage, victory
 - ✅ PixiJS renderer: hex grid, unit tokens, animated strike dots (outbound + return), flight path arcs always originating from the strike group's live in-flight position, sunk-ship markers (red ✕ diamond), FOW contacts at lastKnownHex, selection ring
@@ -29,7 +29,16 @@ Completed sprint history lives in `docs/done/sprints.md`.
 - ✅ CAP endurance: 90-min orbit timer fires automatically; per-mission rearm cycle (30–60 min) gates next launch; strike hits on carrier extend recovering-squadron downtime; `Ship.fuelLevel` / `TaskGroup.fuelState` decrement each step proportional to speed
 - ✅ Dynamic strike targeting: `targetHex` chases moving TG via live contacts (or holds last known hex under FOW); `currentHex` lerped each step for smooth arc origin; `returnEta` re-anchored to carrier's current position on each return-leg step; bezier arcs redraw from in-flight position
 - ✅ Fuel gauge HUD: `TopStatusBar` shows US (blue) and IJN (red) fuel bars via `<GameFuelGauges />`; amber warning pulse at ≤ 20%; GROUNDED label at zero; hidden in menu; `alliedFuelPct`/`japaneseFuelPct` exposed in `__GAME_STATE__`
-- ✅ Vitest: 131 tests across 13 files — all green in < 1 s
+- ✅ `ScenarioParams` / `DEFAULT_SCENARIO_PARAMS` — flat, serialisable struct of 28 tuneable engine constants (fuel rates, damage multipliers, CAP effectiveness, detection range, RNG seed, spawn mode, duration)
+- ✅ All engine subsystems (AirOps, Combat, Damage, Search, GameEngine) read from `ScenarioParams` instead of hardcoded magic numbers
+- ✅ `buildStateFromScenario(scenario, params?)` — shared pure-TS state builder; used by both `useScenarioLoader` and headless scripts; handles `spawnMode`
+- ✅ `spawnMode: 'fixed' | 'seeded' | 'random'` — seeded mode produces reproducible random TG starting positions for fair training comparisons
+- ✅ `scripts/headless.ts` — CLI runner; completes full Midway in ~17 ms; prints JSON result; no Vue, no Nuxt; `pnpm headless`
+- ✅ `engine.getObservation(side)` → `SidedSnapshot` — FOW-filtered; own forces full truth, enemy positions only via active contacts; never exposes ground-truth enemy task group positions
+- ✅ `game/utils/featureVector.ts` — `toFeatureVector(obs, side): Float32Array`; fixed 264-element schema (frozen for training data compatibility)
+- ✅ NuxtHub D1 persistence: `games` + `steps` tables (Drizzle ORM); every completed game logged via `useGameLogger` composable; per-step `SidedSnapshot` stored (not ground truth)
+- ✅ `server/api/games` POST route: accepts game metadata + full step log; bulk-inserts to D1
+- ✅ Vitest: 144 tests across 20 test files — all green in < 2 s
 - ✅ Playwright E2E: 25/25 tests passing; `pnpm test:e2e` fully self-contained
 - ❌ Scramble alert (incoming strike warning + one-click CAP launch for player)
 - ❌ MapTiler basemap
@@ -50,35 +59,6 @@ Completed sprint history lives in `docs/done/sprints.md`.
 > **Chosen path: B — NuxtHub persistence from the start.**
 > Full rationale in `docs/vision/sprint-paths.md`.
 > AI/ML API design decisions in `docs/vision/ai.md` and `docs/vision/ml-api-assessment.md`.
-
----
-
-## Sprint 24 — ScenarioParams + Headless Runner
-
-**Goal:** Parameterise the engine and run it without a renderer. Foundation for all training work.
-
-- Extract hardcoded constants into `ScenarioParams` (`game/types/scenario.ts`): fuel rates, damage multipliers, CAP effectiveness, detection range, board size, spawn mode, RNG seed, duration steps.
-- All engine subsystems read from `ScenarioParams` instead of local magic numbers.
-- `scripts/headless.ts`: instantiate `GameEngine` with a fixed seed, step to `ScenarioEnded`, print result — no Vue, no Nuxt, runs via `npx tsx`.
-- `spawnMode: 'fixed' | 'random' | 'seeded'` — `seeded` produces reproducible random starting positions for fair training comparisons.
-- **Tests:** Headless runner completes a full Midway game without throwing; `ScenarioParams` overrides are applied correctly (e.g. 2× fuel consumption changes game length); seeded random spawn produces identical positions on repeated runs.
-
----
-
-## Sprint 25 — NuxtHub Persistence + FOW-Filtered Snapshot
-
-**Goal:** Log every completed game to NuxtHub D1. Fix the one engine gap that would poison training data.
-
-*See `docs/vision/ml-api-assessment.md` for full analysis. The FOW fix is blocking — all logged data depends on it.*
-
-- **`engine.getObservation(side: Side): SidedSnapshot`** — filters `getSnapshot()` through `FogOfWarSystem.getActiveContacts(side)` so each side sees only what its own scouts have found. `SidedSnapshot` replaces `GameSnapshot` as the type passed to AI agents and logged to the database.
-- **NuxtHub D1 schema** (Drizzle ORM, `server/database/schema.ts`):
-  - `games`: id, scenario, params\_json, allied\_agent, japanese\_agent, winner, duration\_steps, created\_at
-  - `steps`: game\_id, step\_number, snapshot\_json (per-side, not ground truth), orders\_json
-- **`game/utils/featureVector.ts`** — `toFeatureVector(obs: SidedSnapshot, side: Side): Float32Array` with fixed-size slots (4 TGs, 8 contacts, 16 squadrons, 8 flight plans, scalar globals). Schema frozen here — changing it later invalidates stored data.
-- NuxtHub local dev emulates D1 with SQLite in-process; no Docker required. Reference: https://hub.nuxt.com/llms.txt
-- On `ScenarioEnded`: write game record + full step log to D1 via `hubDatabase()`.
-- **Tests:** Game log written after headless run; `getObservation('allied')` never exposes Japanese task group positions not present in allied contacts; feature vector has correct fixed length; NuxtHub schema migrates cleanly.
 
 ---
 
